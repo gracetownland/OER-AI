@@ -486,6 +486,91 @@ export class ApiGatewayStack extends cdk.Stack {
     );
     lambdaRole.attachInlinePolicy(adminAddUserToGroupPolicyLambda);
 
+    const coglambdaRole = new iam.Role(
+      this,
+      `${id}-cognitoLambdaRole-${this.region}`,
+      {
+        roleName: `${id}-cognitoLambdaRole-${this.region}`,
+        assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      }
+    );
+
+    // Grant access to Secret Manager
+    coglambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          //Secrets Manager
+          "secretsmanager:GetSecretValue",
+        ],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:*`,
+        ],
+      })
+    );
+
+    // Grant access to EC2
+    coglambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ec2:CreateNetworkInterface",
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:DeleteNetworkInterface",
+          "ec2:AssignPrivateIpAddresses",
+          "ec2:UnassignPrivateIpAddresses",
+        ],
+        resources: ["*"], // must be *
+      })
+    );
+
+    // Grant access to log
+    coglambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          //Logs
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ],
+        resources: ["arn:aws:logs:*:*:*"],
+      })
+    );
+
+    // Grant permission to add users to an IAM group
+    coglambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["iam:AddUserToGroup"],
+        resources: [
+          `arn:aws:iam::${this.account}:user/*`,
+          `arn:aws:iam::${this.account}:group/*`,
+        ],
+      })
+    );
+
+    coglambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          // Secrets Manager
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:PutSecretValue",
+        ],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:*`,
+        ],
+      })
+    );
+
+    coglambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        actions: ["ssm:GetParameter"],
+        resources: [`arn:aws:ssm:${this.region}:${this.account}:parameter/*`],
+      })
+    );
+
     // Attach roles to the identity pool
     new cognito.CfnIdentityPoolRoleAttachment(this, `${id}-IdentityPoolRoles`, {
       identityPoolId: this.identityPool.ref,
@@ -586,5 +671,47 @@ export class ApiGatewayStack extends cdk.Stack {
     const apiGW_publicTokenFunction = publicTokenLambda.node
       .defaultChild as lambda.CfnFunction;
     apiGW_publicTokenFunction.overrideLogicalId("PublicTokenFunction");
+
+    const preSignupLambda = new lambda.Function(this, `preSignupLambda`, {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromAsset("lambda/authorization"),
+      handler: "preSignUp.handler",
+      timeout: Duration.seconds(300),
+      environment: {
+        ALLOWED_EMAIL_DOMAINS: "/OER/AllowedEmailDomains",
+      },
+      vpc: vpcStack.vpc,
+      functionName: `${id}-preSignupLambda`,
+      memorySize: 128,
+      role: coglambdaRole,
+    });
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.PRE_SIGN_UP,
+      preSignupLambda
+    );
+
+    const AutoSignupLambda = new lambda.Function(
+      this,
+      `${id}-addAdminOnSignUp`,
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromAsset("lambda/authorization"),
+        handler: "addAdminOnSignUp.handler",
+        timeout: Duration.seconds(300),
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathTableCreator.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+        },
+        vpc: vpcStack.vpc,
+        functionName: `${id}-addMemberOnSignUp`,
+        memorySize: 128,
+        layers: [postgres],
+        role: coglambdaRole,
+      }
+    );
+    this.userPool.addTrigger(
+      cognito.UserPoolOperation.POST_CONFIRMATION,
+      AutoSignupLambda
+    );
   }
 }
