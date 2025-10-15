@@ -200,42 +200,143 @@ paths:
     get:
       tags:
         - User
-      summary: Get list of available textbooks
+      summary: Get paginated list of available textbooks
       operationId: get_textbooks
       security:
         - userAuthorizer: []
+      parameters:
+        - name: limit
+          in: query
+          description: Number of textbooks to return (default 20, max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: offset
+          in: query
+          description: Number of textbooks to skip (default 0)
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         "200":
           description: List of textbooks
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  type: object
-                  properties:
-                    id:
+                type: object
+                properties:
+                  textbooks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        title:
+                          type: string
+                        authors:
+                          type: array
+                          items:
+                            type: string
+                        publisher:
+                          type: string
+                        year:
+                          type: integer
+                        summary:
+                          type: string
+                        language:
+                          type: string
+                        level:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+                    properties:
+                      limit:
+                        type: integer
+                      offset:
+                        type: integer
+                      total:
+                        type: integer
+                      hasMore:
+                        type: boolean
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
+  /textbooks/{id}:
+    <<: *commonOptions
+    get:
+      tags:
+        - User
+      summary: Get a specific textbook by ID
+      operationId: get_textbook_by_id
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Textbook UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Textbook details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  title:
+                    type: string
+                  authors:
+                    type: array
+                    items:
                       type: string
-                      format: uuid
-                    title:
-                      type: string
-                    authors:
-                      type: array
-                      items:
-                        type: string
-                    publisher:
-                      type: string
-                    year:
-                      type: integer
-                    summary:
-                      type: string
-                    language:
-                      type: string
-                    level:
-                      type: string
-                    created_at:
-                      type: string
-                      format: date-time
+                  license:
+                    type: string
+                  source_url:
+                    type: string
+                  publisher:
+                    type: string
+                  year:
+                    type: integer
+                  summary:
+                    type: string
+                  language:
+                    type: string
+                  level:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+                  metadata:
+                    type: object
+        "404":
+          description: Textbook not found
         "401":
           description: Unauthorized
         "500":

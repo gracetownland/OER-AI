@@ -34,12 +34,52 @@ exports.handler = async (event) => {
     const pathData = event.httpMethod + " " + event.resource;
     switch (pathData) {
       case "GET /textbooks":
+        const limit = parseInt(event.queryStringParameters?.limit) || 20;
+        const offset = parseInt(event.queryStringParameters?.offset) || 0;
+        
         const textbooks = await sqlConnection`
           SELECT id, title, authors, publisher, year, summary, language, level, created_at
           FROM textbooks
           ORDER BY created_at DESC
+          LIMIT ${limit} OFFSET ${offset}
         `;
-        data = textbooks;
+        
+        const totalCount = await sqlConnection`
+          SELECT COUNT(*) as count FROM textbooks
+        `;
+        
+        data = {
+          textbooks,
+          pagination: {
+            limit,
+            offset,
+            total: parseInt(totalCount[0].count),
+            hasMore: offset + limit < parseInt(totalCount[0].count)
+          }
+        };
+        response.body = JSON.stringify(data);
+        break;
+      case "GET /textbooks/{id}":
+        const textbookId = event.pathParameters?.id;
+        if (!textbookId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Textbook ID is required" });
+          break;
+        }
+        
+        const textbook = await sqlConnection`
+          SELECT id, title, authors, license, source_url, publisher, year, summary, language, level, created_at, updated_at, metadata
+          FROM textbooks
+          WHERE id = ${textbookId}
+        `;
+        
+        if (textbook.length === 0) {
+          response.statusCode = 404;
+          response.body = JSON.stringify({ error: "Textbook not found" });
+          break;
+        }
+        
+        data = textbook[0];
         response.body = JSON.stringify(data);
         break;
       default:
