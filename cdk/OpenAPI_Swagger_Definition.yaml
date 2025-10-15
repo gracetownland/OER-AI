@@ -195,6 +195,58 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
+  /textbooks:
+    <<: *commonOptions
+    get:
+      tags:
+        - User
+      summary: Get list of available textbooks
+      operationId: get_textbooks
+      security:
+        - userAuthorizer: []
+      responses:
+        "200":
+          description: List of textbooks
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    title:
+                      type: string
+                    authors:
+                      type: array
+                      items:
+                        type: string
+                    publisher:
+                      type: string
+                    year:
+                      type: integer
+                    summary:
+                      type: string
+                    language:
+                      type: string
+                    level:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
   /user/exampleEndpoint:
     options:
       summary: CORS support

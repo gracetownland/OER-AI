@@ -771,5 +771,37 @@ export class ApiGatewayStack extends cdk.Stack {
       action: "lambda:InvokeFunction",
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/user*`,
     });
+
+    const lambdaTextbookFunction = new lambda.Function(this, `${id}-textbookFunction`, {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromAsset("lambda"),
+      handler: "handlers/textbookHandler.handler",
+      timeout: Duration.seconds(300),
+      vpc: vpcStack.vpc,
+      environment: {
+        SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+        RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+      },
+      functionName: `${id}-textbookFunction`,
+      memorySize: 512,
+      layers: [postgres],
+      role: lambdaRole,
+    });
+
+    lambdaTextbookFunction.addPermission("AllowApiGatewayInvoke", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks*`,
+    });
+
+    lambdaTextbookFunction.addPermission("AllowTestInvoke", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/test-invoke-stage/*/*`,
+    });
+
+    const cfnLambda_textbook = lambdaTextbookFunction.node
+      .defaultChild as lambda.CfnFunction;
+    cfnLambda_textbook.overrideLogicalId("textbookFunction");
   }
 }

@@ -1,5 +1,5 @@
 const { initializeConnection } = require("./initializeConnection.js");
-let { SM_DB_CREDENTIALS, RDS_PROXY_ENDPOINT, USER_POOL } = process.env;
+let { SM_DB_CREDENTIALS, RDS_PROXY_ENDPOINT } = process.env;
 
 // Initialize connection outside handler for Lambda performance
 let sqlConnection;
@@ -33,21 +33,13 @@ exports.handler = async (event) => {
   try {
     const pathData = event.httpMethod + " " + event.resource;
     switch (pathData) {
-      case "GET /user/exampleEndpoint":
-        data = "Example endpoint invoked";
-        response.body = JSON.stringify(data);
-        break;
-      case "POST /user_sessions":
-        const sessionId = crypto.randomUUID();
-        const result = await sqlConnection`
-          INSERT INTO user_sessions (session_id, created_at, last_active_at)
-          VALUES (${sessionId}, NOW(), NOW())
-          RETURNING id, session_id, created_at
+      case "GET /textbooks":
+        const textbooks = await sqlConnection`
+          SELECT id, title, authors, publisher, year, summary, language, level, created_at
+          FROM textbooks
+          ORDER BY created_at DESC
         `;
-        data = {
-          sessionId: result[0].session_id,
-          userSessionId: result[0].id
-        };
+        data = textbooks;
         response.body = JSON.stringify(data);
         break;
       default:
