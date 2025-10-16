@@ -110,6 +110,31 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
+      // DELETE /chat_sessions/{id} - Delete specific chat session (admin only)
+      case "DELETE /chat_sessions/{id}":
+        const chatSessionId = event.pathParameters?.id;
+        if (!chatSessionId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Chat session ID is required" });
+          break;
+        }
+        
+        // Delete chat session and return deleted ID to confirm operation
+        const deletedChat = await sqlConnection`
+          DELETE FROM chat_sessions WHERE id = ${chatSessionId} RETURNING id
+        `;
+        
+        // Check if chat session existed and was deleted
+        if (deletedChat.length === 0) {
+          response.statusCode = 404;
+          response.body = JSON.stringify({ error: "Chat session not found" });
+          break;
+        }
+        
+        response.statusCode = 204; // No Content - successful deletion
+        response.body = ""; // Empty body for 204 responses
+        break;
+        
       // Handle unsupported routes
       default:
         throw new Error(`Unsupported route: "${pathData}"`);

@@ -112,6 +112,39 @@ paths:
         type: aws_proxy
       x-amazon-apigateway-request-validator: all
 
+  /chat_sessions/{id}: #this endpoint is just shorter than having all the extra data to slot it under textbooks.
+    <<: *commonOptions
+    delete:
+      tags:
+        - Admin
+      summary: Delete a specific chat session
+      operationId: delete_chat_session
+      security:
+        - adminAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Chat session UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Chat session deleted successfully
+        "404":
+          description: Chat session not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${adminFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
   /user/publicToken:
     options:
       summary: CORS support
