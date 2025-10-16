@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { CornerUpRight, Send, ChevronDown, LibraryBig } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import Header from "@/components/Header";
+import StudentSideBar from "./StudentSideBar";
 
 export default function AIChatPage() {
   const [message, setMessage] = useState("");
@@ -20,36 +21,12 @@ export default function AIChatPage() {
     <div className="flex flex-col min-h-screen bg-background">
       {/* Header */}
       <Header />
-
-      <div className="flex-1 flex overflow-hidden">
+      <div className="pt-[70px] flex-1 flex overflow-hidden">
         {/* Sidebar */}
-        <aside className="w-64 flex-shrink-0 border-r border-gray-200 bg-gray-50 p-4 overflow-auto">
-          {/* Textbook Card */}
-          <Card className="mb-6">
-            <CardContent>
-              <h3 className="font-semibold text-sm">{textbookTitle}</h3>
-              <p className="text-xs text-gray-600">By {textbookAuthor}</p>
-            </CardContent>
-          </Card>
-
-          {/* Menu Items */}
-          <nav className="space-y-2 mb-6">
-            <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              FAQ Cache
-            </button>
-            <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
-              Practice Material
-            </button>
-          </nav>
-
-          {/* Tutor Section */}
-          <div className="border-t border-gray-200 pt-4">
-            <h4 className="font-semibold text-sm px-3">Tutor</h4>
-          </div>
-        </aside>
+        <StudentSideBar textbookTitle={textbookTitle} textbookAuthor={textbookAuthor} />
 
         {/* Main Content: make this scrollable independently */}
-        <main className="flex flex-1 overflow-y-auto p-8 justify-center items-center">
+        <main className="md:ml-64 flex flex-1 overflow-y-auto p-8 justify-center items-center">
           <div className="w-full max-w-2xl px-4">
             {/* Heading */}
             <h1 className="text-4xl font-bold text-center mb-12 leading-tight max-w-full break-words">
