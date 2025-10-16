@@ -256,6 +256,129 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
+      // GET /textbooks/{id}/chat_sessions - Get all chat sessions for a textbook (paginated)
+      case "GET /textbooks/{id}/chat_sessions":
+        const chatTextbookId = event.pathParameters?.id;
+        if (!chatTextbookId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Textbook ID is required" });
+          break;
+        }
+        
+        // Parse pagination parameters
+        const chatPage = parseInt(event.queryStringParameters?.page || '1');
+        const chatLimit = Math.min(parseInt(event.queryStringParameters?.limit || '50'), 100);
+        const chatOffset = (chatPage - 1) * chatLimit;
+        
+        // Get total count for pagination metadata
+        const chatTotalResult = await sqlConnection`
+          SELECT COUNT(*) as total FROM chat_sessions WHERE textbook_id = ${chatTextbookId}
+        `;
+        const chatTotal = parseInt(chatTotalResult[0].total);
+        
+        // Get paginated chat sessions
+        const chatSessions = await sqlConnection`
+          SELECT id, user_sessions_session_id, textbook_id, context, created_at, metadata
+          FROM chat_sessions
+          WHERE textbook_id = ${chatTextbookId}
+          ORDER BY created_at DESC
+          LIMIT ${chatLimit} OFFSET ${chatOffset}
+        `;
+        
+        data = {
+          chat_sessions: chatSessions,
+          pagination: {
+            page: chatPage,
+            limit: chatLimit,
+            total: chatTotal,
+            total_pages: Math.ceil(chatTotal / chatLimit)
+          }
+        };
+        response.body = JSON.stringify(data);
+        break;
+        
+      // GET /textbooks/{id}/chat_sessions/user/{user_session_id} - Get chat sessions for specific user
+      case "GET /textbooks/{id}/chat_sessions/user/{user_session_id}":
+        const userChatTextbookId = event.pathParameters?.id;
+        const userSessionId = event.pathParameters?.user_session_id;
+        
+        if (!userChatTextbookId || !userSessionId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Textbook ID and user_session_id are required" });
+          break;
+        }
+        
+        // Get chat sessions for specific user and textbook
+        const userChatSessions = await sqlConnection`
+          SELECT id, user_sessions_session_id, textbook_id, context, created_at, metadata
+          FROM chat_sessions
+          WHERE textbook_id = ${userChatTextbookId} AND user_sessions_session_id = ${userSessionId}
+          ORDER BY created_at DESC
+        `;
+        
+        data = userChatSessions;
+        response.body = JSON.stringify(data);
+        break;
+        
+      // POST /textbooks/{id}/chat_sessions - Create new chat session for textbook
+      case "POST /textbooks/{id}/chat_sessions":
+        const postChatTextbookId = event.pathParameters?.id;
+        if (!postChatTextbookId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Textbook ID is required" });
+          break;
+        }
+        
+        // Parse chat session data from request body
+        let chatData;
+        try {
+          chatData = JSON.parse(event.body || '{}');
+        } catch {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Invalid JSON body" });
+          break;
+        }
+        
+        // Extract required user_sessions_session_id and optional context
+        const { user_sessions_session_id, context } = chatData;
+        if (!user_sessions_session_id) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "user_sessions_session_id is required" });
+          break;
+        }
+        
+        // Verify textbook exists
+        const textbookExists = await sqlConnection`
+          SELECT id FROM textbooks WHERE id = ${postChatTextbookId}
+        `;
+        if (textbookExists.length === 0) {
+          response.statusCode = 404;
+          response.body = JSON.stringify({ error: "Textbook not found" });
+          break;
+        }
+        
+        // Verify user session exists
+        const userSessionExists = await sqlConnection`
+          SELECT id FROM user_sessions WHERE id = ${user_sessions_session_id}
+        `;
+        if (userSessionExists.length === 0) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Invalid user_sessions_session_id" });
+          break;
+        }
+        
+        // Create new chat session
+        const newChatSession = await sqlConnection`
+          INSERT INTO chat_sessions (user_sessions_session_id, textbook_id, context)
+          VALUES (${user_sessions_session_id}, ${postChatTextbookId}, ${context || {}})
+          RETURNING id, user_sessions_session_id, textbook_id, context, created_at, metadata
+        `;
+        
+        response.statusCode = 201; // Created
+        data = newChatSession[0];
+        response.body = JSON.stringify(data);
+        break;
+        
       // Handle unsupported routes
       default:
         throw new Error(`Unsupported route: "${pathData}"`);
