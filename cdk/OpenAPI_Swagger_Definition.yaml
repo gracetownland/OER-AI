@@ -140,7 +140,7 @@ paths:
           description: Internal Server Error
       x-amazon-apigateway-integration:
         uri:
-          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${adminFunction.Arn}/invocations
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${userFunction.Arn}/invocations
         passthroughBehavior: "when_no_match"
         httpMethod: POST
         type: aws_proxy
@@ -1139,6 +1139,488 @@ paths:
           description: Section deleted successfully
         "404":
           description: Section not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
+  /textbooks/{id}/media_items:
+    <<: *commonOptions
+    get:
+      tags:
+        - User
+      summary: Get media items for a textbook
+      operationId: get_textbook_media_items
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Textbook UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Media items for textbook
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                    textbook_id:
+                      type: string
+                      format: uuid
+                    media_type:
+                      type: string
+                      enum: ['pdf', 'audio', 'video', 'image', 'transcript', 'h5p', 'other']
+                    uri:
+                      type: string
+                      maxLength: 512
+                    size_bytes:
+                      type: integer
+                      format: int64
+                    mime_type:
+                      type: string
+                      maxLength: 128
+                    description:
+                      type: string
+                    page_start:
+                      type: integer
+                    page_end:
+                      type: integer
+                    created_at:
+                      type: string
+                      format: date-time
+        "400":
+          description: Invalid parameters
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+    post:
+      tags:
+        - User
+      summary: Create media item for textbook
+      operationId: create_textbook_media_item
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Textbook UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - media_type
+                - uri
+              properties:
+                media_type:
+                  type: string
+                  enum: ['pdf', 'audio', 'video', 'image', 'transcript', 'h5p', 'other']
+                uri:
+                  type: string
+                  maxLength: 512
+                size_bytes:
+                  type: integer
+                  format: int64
+                mime_type:
+                  type: string
+                  maxLength: 128
+                description:
+                  type: string
+                page_start:
+                  type: integer
+                page_end:
+                  type: integer
+      responses:
+        "201":
+          description: Media item created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  textbook_id:
+                    type: string
+                    format: uuid
+                  media_type:
+                    type: string
+                    enum: ['pdf', 'audio', 'video', 'image', 'transcript', 'h5p', 'other']
+                  uri:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    format: int64
+                  mime_type:
+                    type: string
+                  description:
+                    type: string
+                  page_start:
+                    type: integer
+                  page_end:
+                    type: integer
+                  created_at:
+                    type: string
+                    format: date-time
+        "400":
+          description: Invalid request
+        "404":
+          description: Textbook not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
+  /media_items/{id}:
+    <<: *commonOptions
+    get:
+      tags:
+        - User
+      summary: Get a specific media item by ID
+      operationId: get_media_item_by_id
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Media item UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Media item details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  textbook_id:
+                    type: string
+                    format: uuid
+                  media_type:
+                    type: string
+                    enum: ['pdf', 'audio', 'video', 'image', 'transcript', 'h5p', 'other']
+                  uri:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    format: int64
+                  mime_type:
+                    type: string
+                  description:
+                    type: string
+                  page_start:
+                    type: integer
+                  page_end:
+                    type: integer
+                  created_at:
+                    type: string
+                    format: date-time
+        "404":
+          description: Media item not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+    put:
+      tags:
+        - User
+      summary: Update a specific media item
+      operationId: update_media_item
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Media item UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                media_type:
+                  type: string
+                  enum: ['pdf', 'audio', 'video', 'image', 'transcript', 'h5p', 'other']
+                uri:
+                  type: string
+                  maxLength: 512
+                size_bytes:
+                  type: integer
+                  format: int64
+                mime_type:
+                  type: string
+                  maxLength: 128
+                description:
+                  type: string
+                page_start:
+                  type: integer
+                page_end:
+                  type: integer
+      responses:
+        "200":
+          description: Media item updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  textbook_id:
+                    type: string
+                    format: uuid
+                  media_type:
+                    type: string
+                    enum: ['pdf', 'audio', 'video', 'image', 'transcript', 'h5p', 'other']
+                  uri:
+                    type: string
+                  size_bytes:
+                    type: integer
+                    format: int64
+                  mime_type:
+                    type: string
+                  description:
+                    type: string
+                  page_start:
+                    type: integer
+                  page_end:
+                    type: integer
+                  created_at:
+                    type: string
+                    format: date-time
+        "404":
+          description: Media item not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+    delete:
+      tags:
+        - User
+      summary: Delete a specific media item
+      operationId: delete_media_item
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Media item UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Media item deleted successfully
+        "404":
+          description: Media item not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
+  /textbooks/{id}/chunks:
+    <<: *commonOptions
+    get:
+      tags:
+        - User
+      summary: Get paginated document chunks for a textbook
+      operationId: get_textbook_chunks
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Textbook UUID
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          description: Page number (default 1)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          description: Number of chunks per page (default 50, max 100)
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Paginated document chunks for textbook
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  chunks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        textbook_id:
+                          type: string
+                          format: uuid
+                        section_id:
+                          type: string
+                          format: uuid
+                        media_item_id:
+                          type: string
+                          format: uuid
+                        chunk_text:
+                          type: string
+                        chunk_meta:
+                          type: object
+                        created_at:
+                          type: string
+                          format: date-time
+                  pagination:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      total_pages:
+                        type: integer
+        "400":
+          description: Invalid parameters
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${textbookFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
+  /chunks/{id}:
+    <<: *commonOptions
+    get:
+      tags:
+        - User
+      summary: Get a specific document chunk by ID
+      operationId: get_chunk_by_id
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Chunk UUID
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Document chunk details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  textbook_id:
+                    type: string
+                    format: uuid
+                  section_id:
+                    type: string
+                    format: uuid
+                  media_item_id:
+                    type: string
+                    format: uuid
+                  chunk_text:
+                    type: string
+                  chunk_meta:
+                    type: object
+                  created_at:
+                    type: string
+                    format: date-time
+        "404":
+          description: Chunk not found
         "401":
           description: Unauthorized
         "500":
