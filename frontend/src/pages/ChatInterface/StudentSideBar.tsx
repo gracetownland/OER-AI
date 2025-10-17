@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 type StudentSideBarProps = {
   textbookTitle: string;
@@ -10,7 +11,7 @@ export default function StudentSideBar({
   textbookAuthor,
 }: StudentSideBarProps) {
   return (
-    <aside className="fixed left-0 p-[10px] h-screen w-64 flex-shrink-0 border-r border-gray-200 bg-gray-50 overflow-auto px-4">
+    <aside className="fixed left-0 p-[10px] h-screen w-64 flex-shrink-0 border bg-muted overflow-auto px-4">
       {/* Textbook Card */}
       <Card className="mb-6">
         <CardContent>
@@ -21,12 +22,12 @@ export default function StudentSideBar({
 
       {/* Menu Items */}
       <nav className="space-y-2 mb-6">
-        <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+        <Button variant={"link"} className="cursor-pointer w-full justify-start px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-md transition-colors">
           FAQ Cache
-        </button>
-        <button className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md transition-colors">
+        </Button>
+        <Button variant={"link"} className="cursor-pointer w-full justify-start px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-md transition-colors">
           Practice Material
-        </button>
+        </Button>
       </nav>
 
       {/* Tutor Section */}
