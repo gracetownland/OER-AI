@@ -13,9 +13,13 @@ export default function StudentSideBar({
   return (
     <aside className="fixed left-0 p-[10px] h-screen w-64 flex-shrink-0 border bg-muted overflow-auto px-4">
       {/* Textbook Card */}
-      <Card className="mb-6">
-        <CardContent>
+      <Card className="py-[10px] gap-2 mb-6">
+        <CardContent
+          className="line-clamp-2 leading-[1.25] overflow-hidden"
+          style={{ minHeight: `calc(1em * 1.25 * 2)` }}>
           <h3 className="font-semibold text-sm">{textbookTitle}</h3>
+        </CardContent>
+        <CardContent className="line-clamp-1 leading-[1.25] overflow-hidden">
           <p className="text-xs text-gray-600">By {textbookAuthor}</p>
         </CardContent>
       </Card>
