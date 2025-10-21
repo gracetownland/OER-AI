@@ -8,6 +8,7 @@ type UserChatMessageProps = {
 
 export default function UserChatMessage({ text }: UserChatMessageProps) {
   return (
+    // main msg container
     <div className="flex flex-col items-end gap-1 group">
       <div className="flex justify-end w-full">
         <Card className="py-[10px] max-w-[90%]">
@@ -16,6 +17,8 @@ export default function UserChatMessage({ text }: UserChatMessageProps) {
           </CardContent>
         </Card>
       </div>
+
+      {/* hover save button */}
       <div className="pr-2">
         <button
           type="button"
