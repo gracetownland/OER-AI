@@ -114,7 +114,7 @@ export default function AIChatPage() {
                   </>
                 ) : (
                   // messages area
-                  <div className="flex flex-col gap-4 mb-6">
+                  <div className="flex flex-col gap-2 mb-6">
                     {messages.map((m) => messageFormatter(m))}
                   </div>
                 )}
@@ -168,7 +168,7 @@ export default function AIChatPage() {
                   <Button
                     onClick={() => setShowLibrary(true)}
                     variant={"link"}
-                    className="cursor-pointer gap-2 text-sm font-normal text-muted-foreground hover:text-gray-900 transition-colors"
+                    className="cursor-pointer gap-2 text-sm font-normal text-muted-foreground hover:text-foreground transition-colors"
                   >
                     Prompt Library
                     <LibraryBig className="h-4 w-4" />
@@ -176,7 +176,7 @@ export default function AIChatPage() {
                   <Button
                     onClick={() => setSeeMore(!seeMore)}
                     variant={"link"}
-                    className="cursor-pointer gap-2 text-sm font-normal text-muted-foreground hover:text-gray-900 transition-colors"
+                    className="cursor-pointer gap-2 text-sm font-normal text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {seeMore ? "Show less" : "See more prompts"}
                     <ChevronDown
