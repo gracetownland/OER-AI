@@ -1,4 +1,4 @@
-import Header from "@/components/Header";
+import HomePageHeader from "@/components/HomePageHeader";
 import TextbookCard from "@/components/HomePage/TextbookCard";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
@@ -79,8 +79,8 @@ export default function HomePage() {
   }, [userSearch]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <Header />
+    <div className="pt-[70px] flex min-h-screen flex-col bg-background">
+      <HomePageHeader />
 
       {/* Main Content */}
       <main className="container mx-auto flex-1 px-6 py-16">
