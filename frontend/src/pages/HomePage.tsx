@@ -4,79 +4,71 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
+type Textbook = {
+  id: string;
+  title: string;
+  authors: string[];
+  publisher?: string;
+  year?: number;
+  summary?: string;
+  language?: string;
+  level?: string;
+  created_at: string;
+};
+
+type TextbookForCard = {
+  id: number;
+  title: string;
+  author: string[];
+  category: string;
+};
+
 export default function HomePage() {
   const [userSearch, setUserSearch] = useState<string>("");
-  const [filteredBooks, setFilteredBooks] = useState<typeof textbooks>([]);
+  const [textbooks, setTextbooks] = useState<Textbook[]>([]);
+  const [filteredBooks, setFilteredBooks] = useState<TextbookForCard[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const textbooks = [
-    {
-      id: 1,
-      title: "Calculus: Volume 3",
-      author: ["OpenStax"],
-      category: "Mathematics",
-    },
-    {
-      id: 2,
-      title: "Elementary Differential Equations with Boundary Value Problems",
-      author: ["William F. Trench"],
-      category: "Mathematics",
-    },
-    {
-      id: 3,
-      title: "Building a Competitive First Nation Investment Climate",
-      author: ["Tulo Centre of Indigenous Economics"],
-      category: "Mathematics",
-    },
-    {
-      id: 4,
-      title: "Financial Strategy for Public Managers",
-      author: ["Sharon Kioko", "Justin Marlowe"],
-      category: "Mathematics",
-    },
-    {
-      id: 5,
-      title:
-        "Guideline for Improving the Effectiveness of Boards of Directors of Nonprofit Organizations",
-      author: ["Vic Murray", "Yvonne Harrison"],
-      category: "Mathematics",
-    },
-    {
-      id: 6,
-      title:
-        "Algorithms and Data Structures with Applications to Graphics and Geometry",
-      author: ["William Shakespeare"],
-      category: "Mathematics",
-    },
-    {
-      id: 7,
-      title: "Foundations of Mathematics: Calculus 3",
-      author: ["William Shakespeare"],
-      category: "Mathematics",
-    },
-    {
-      id: 8,
-      title: "Professional Web Accessibility Auditing Made Easy",
-      author: ["William Shakespeare"],
-      category: "Mathematics",
-    },
-  ];
-
-  //   Search filtering
+  // Fetch textbooks from API
   useEffect(() => {
+    const fetchTextbooks = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/textbooks`);
+        const data = await response.json();
+        setTextbooks(data.textbooks || []);
+      } catch (error) {
+        console.error('Error fetching textbooks:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTextbooks();
+  }, []);
+
+  // Convert API textbooks to card format and apply search filtering
+  useEffect(() => {
+    const convertedBooks: TextbookForCard[] = textbooks.map((book, index) => ({
+      id: index + 1, // Use index as numeric ID for card component
+      title: book.title,
+      author: book.authors || [],
+      category: book.level || "General"
+    }));
+
     const q = userSearch.trim().toLowerCase();
     if (!q) {
-      setFilteredBooks(textbooks);
+      setFilteredBooks(convertedBooks);
       return;
     }
 
     setFilteredBooks(
-      textbooks.filter(
+      convertedBooks.filter(
         (textbook) =>
           textbook.title.toLowerCase().includes(q) ||
           textbook.author.join(" ").toLowerCase().includes(q)
       )
     );
-  }, [userSearch]);
+  }, [textbooks, userSearch]);
 
   return (
     <div className="pt-[70px] flex min-h-screen flex-col bg-background">
@@ -110,9 +102,19 @@ export default function HomePage() {
 
           {/* Textbook Grid */}
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {filteredBooks.map((textbook) => (
-              <TextbookCard key={textbook.id} textbook={textbook} />
-            ))}
+            {loading ? (
+              <div className="col-span-full text-center py-8">
+                <p>Loading textbooks...</p>
+              </div>
+            ) : filteredBooks.length === 0 ? (
+              <div className="col-span-full text-center py-8">
+                <p>No textbooks found.</p>
+              </div>
+            ) : (
+              filteredBooks.map((textbook) => (
+                <TextbookCard key={textbook.id} textbook={textbook} />
+              ))
+            )}
           </div>
         </div>
       </main>

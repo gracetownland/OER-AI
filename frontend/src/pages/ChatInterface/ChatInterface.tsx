@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Send, ChevronDown, LibraryBig } from "lucide-react";
 import PromptCard from "@/components/ChatInterface/PromptCard";
 import AIChatMessage from "@/components/ChatInterface/AIChatMessage";
@@ -18,6 +18,15 @@ type Message = {
   time: number;
 };
 
+type PromptTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  type: string;
+  visibility: string;
+  created_at: string;
+};
+
 export default function AIChatPage() {
   const [message, setMessage] = useState("");
   const location = useLocation();
@@ -28,27 +37,49 @@ export default function AIChatPage() {
     ? navTextbook.author.join(", ")
     : "OpenStax";
 
-  const prompts = [
-    "Summarize a Chapter",
-    "Define and explain a term",
-    "Generate an example problem",
-    "Explain a concept in simple terms",
-    "Create practice questions",
-    "Compare and contrast topics",
-    "Provide real-world applications",
-    "Break down a complex formula",
-    "Suggest study strategies",
-    "Quiz me on key concepts",
-    "Create a study guide outline",
-    "Explain with analogies",
-  ];
+  const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
+  const [loading, setLoading] = useState(true);
 
   // chat state
   const [messages, setMessages] = useState<Message[]>([]);
   const [seeMore, setSeeMore] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
 
-  function sendMessage() {
+  // Fetch prompt templates from API
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/prompt_templates`);
+        const data = await response.json();
+        const templates = data.templates || [];
+        setPrompts(templates.length > 0 ? templates : [
+          { id: '1', name: "Summarize a Chapter", description: "Provide a concise summary of a specific chapter", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '2', name: "Define and explain a term", description: "Give a clear definition and explanation of a concept or term", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '3', name: "Generate an example problem", description: "Create a practice problem with step-by-step solution", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '4', name: "Explain a concept in simple terms", description: "Break down complex concepts into easy-to-understand language", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '5', name: "Create practice questions", description: "Generate quiz questions to test understanding", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '6', name: "Compare and contrast topics", description: "Analyze similarities and differences between related concepts", type: 'RAG', visibility: 'public', created_at: '' }
+        ]);
+      } catch (error) {
+        console.error('Error fetching prompt templates:', error);
+        // Fallback to default prompts
+        setPrompts([
+          { id: '1', name: "Summarize a Chapter", description: "Provide a concise summary of a specific chapter", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '2', name: "Define and explain a term", description: "Give a clear definition and explanation of a concept or term", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '3', name: "Generate an example problem", description: "Create a practice problem with step-by-step solution", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '4', name: "Explain a concept in simple terms", description: "Break down complex concepts into easy-to-understand language", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '5', name: "Create practice questions", description: "Generate quiz questions to test understanding", type: 'RAG', visibility: 'public', created_at: '' },
+          { id: '6', name: "Compare and contrast topics", description: "Analyze similarities and differences between related concepts", type: 'RAG', visibility: 'public', created_at: '' }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchPrompts();
+  }, []);
+
+  async function sendMessage() {
     const text = message.trim();
     if (!text) return;
 
@@ -63,16 +94,41 @@ export default function AIChatPage() {
     setMessages((m) => [...m, userMsg]);
     setMessage("");
 
-    // fake bot reply after a short delay
-    setTimeout(() => {
+    try {
+      // Generate a temporary chat session ID (in real app, this would come from session creation)
+      const sessionId = "temp-session-id";
+      const textbookId = navTextbook?.id || "temp-textbook-id";
+      
+      const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/chat_sessions/${sessionId}/text_generation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          textbook_id: textbookId,
+          query: text
+        })
+      });
+
+      const data = await response.json();
+      
       const botMsg: Message = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
         sender: "bot",
-        text: `This is a placeholder reply to: "${text}"`,
+        text: data.response || "Sorry, I couldn't generate a response.",
         time: Date.now(),
       };
       setMessages((m) => [...m, botMsg]);
-    }, 700);
+    } catch (error) {
+      console.error('Error generating text:', error);
+      const errorMsg: Message = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        sender: "bot",
+        text: "Sorry, there was an error processing your request.",
+        time: Date.now(),
+      };
+      setMessages((m) => [...m, errorMsg]);
+    }
   }
 
   function messageFormatter(message: Message) {
@@ -149,17 +205,23 @@ export default function AIChatPage() {
                 {/* Prompt Suggestions */}
                 {(messages.length === 0 || seeMore) && (
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-                    {prompts
-                      .slice(0, messages.length === 0 && !seeMore ? 3 : 12)
-                      .map((prompt, index) => (
-                        <PromptCard
-                          key={index}
-                          text={prompt}
-                          onClick={() => {
-                            setMessage(prompt);
-                          }}
-                        />
-                      ))}
+                    {loading ? (
+                      <div className="col-span-full text-center py-4">
+                        <p className="text-muted-foreground">Loading prompts...</p>
+                      </div>
+                    ) : (
+                      prompts
+                        .slice(0, messages.length === 0 && !seeMore ? 3 : 12)
+                        .map((prompt, index) => (
+                          <PromptCard
+                            key={prompt.id || index}
+                            text={prompt.name}
+                            onClick={() => {
+                              setMessage(prompt.description || prompt.name);
+                            }}
+                          />
+                        ))
+                    )}
                   </div>
                 )}
 
@@ -192,8 +254,11 @@ export default function AIChatPage() {
             <PromptLibraryModal
               open={showLibrary}
               onOpenChange={setShowLibrary}
-              prompts={prompts}
-              onSelectPrompt={(p) => setMessage(p)}
+              prompts={prompts.map(p => p.name)}
+              onSelectPrompt={(p) => {
+                const template = prompts.find(t => t.name === p);
+                setMessage(template?.description || p);
+              }}
             />
           </main>
         </div>

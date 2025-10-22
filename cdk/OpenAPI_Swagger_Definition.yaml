@@ -145,6 +145,63 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
+  /chat_sessions/{id}/text_generation:
+    <<: *commonOptions
+    post:
+      tags:
+        - User
+      summary: Generate text response for a chat session
+      operationId: generate_text
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Chat session UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - textbook_id
+                - query
+              properties:
+                textbook_id:
+                  type: string
+                  format: uuid
+                query:
+                  type: string
+      responses:
+        "200":
+          description: Generated text response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                  sources:
+                    type: array
+                    items:
+                      type: object
+        "400":
+          description: Invalid request
+        "404":
+          description: Chat session not found
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${userFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
   /user/publicToken:
     options:
       summary: CORS support
@@ -863,8 +920,7 @@ paths:
         - User
       summary: Get paginated list of available textbooks
       operationId: get_textbooks
-      security:
-        - userAuthorizer: []
+      
       parameters:
         - name: limit
           in: query
@@ -1501,8 +1557,8 @@ paths:
         - User
       summary: Get paginated chat sessions for a textbook
       operationId: get_textbook_chat_sessions
-      security:
-        - userAuthorizer: []
+      #security:
+      #  - userAuthorizer: []
       parameters:
         - name: id
           in: path
@@ -2686,8 +2742,7 @@ paths:
         - User
       summary: Get paginated list of prompt templates
       operationId: get_prompt_templates
-      security:
-        - userAuthorizer: []
+      
       parameters:
         - name: limit
           in: query
