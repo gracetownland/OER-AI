@@ -66,7 +66,7 @@ def get_textbook_retriever(llm, textbook_id: str, vectorstore_config_dict: Dict[
         
         # Initialize vector store with the textbook_id as collection name
         vectorstore = PGVector(
-            embedding_function=embeddings,
+            embeddings=embeddings,
             collection_name=textbook_id,
             connection_string=connection_string,
             use_jsonb=True

@@ -3,6 +3,7 @@ import TextbookCard from "@/components/HomePage/TextbookCard";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { UUID } from "crypto";
 
 type Textbook = {
   id: string;
@@ -17,7 +18,7 @@ type Textbook = {
 };
 
 type TextbookForCard = {
-  id: number;
+  id: UUID;
   title: string;
   author: string[];
   category: string;
@@ -33,11 +34,13 @@ export default function HomePage() {
   useEffect(() => {
     const fetchTextbooks = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/textbooks`);
+        const response = await fetch(
+          `${import.meta.env.VITE_API_ENDPOINT}/textbooks`
+        );
         const data = await response.json();
         setTextbooks(data.textbooks || []);
       } catch (error) {
-        console.error('Error fetching textbooks:', error);
+        console.error("Error fetching textbooks:", error);
       } finally {
         setLoading(false);
       }
@@ -49,10 +52,10 @@ export default function HomePage() {
   // Convert API textbooks to card format and apply search filtering
   useEffect(() => {
     const convertedBooks: TextbookForCard[] = textbooks.map((book, index) => ({
-      id: index + 1, // Use index as numeric ID for card component
+      id: book.id, // Use index as numeric ID for card component
       title: book.title,
       author: book.authors || [],
-      category: book.level || "General"
+      category: book.level || "General",
     }));
 
     const q = userSearch.trim().toLowerCase();
