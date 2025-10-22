@@ -71,7 +71,7 @@ def get_textbook_retriever(llm, textbook_id: str, vectorstore_config_dict: Dict[
         logger.info("Creating PGVector connection string")
         connection_string = (
             f"postgresql+psycopg://{vectorstore_config_dict['user']}:"
-            f"********@{vectorstore_config_dict['host']}:"
+            f"{vectorstore_config_dict['password']}@{vectorstore_config_dict['host']}:"
             f"{vectorstore_config_dict['port']}/{vectorstore_config_dict['dbname']}"
         )
         logger.info(f"Connection string created (password masked): {connection_string}")
