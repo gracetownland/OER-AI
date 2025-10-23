@@ -1,8 +1,8 @@
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { useNavigate } from 'react-router'
+import { useNavigate } from "react-router";
 
 type Textbook = {
-  id: number;
+  id: string | number;
   title: string;
   author: string[];
   category: string;
@@ -17,12 +17,14 @@ function formatAuthors(authors: string[]) {
 }
 
 export default function TextbookCard({ textbook }: { textbook: Textbook }) {
-  const navigate = useNavigate()
+  const navigate = useNavigate();
 
   return (
     <Card
       key={textbook.id}
-      onClick={() => navigate(`/textbook/${textbook.id}/chat`, { state: { textbook } })}
+      onClick={() =>
+        navigate(`/textbook/${textbook.id}/chat`, { state: { textbook } })
+      }
       className="flex flex-col items-start p-[10px] gap-4 not-odd:transition-shadow hover:shadow-lg cursor-pointer"
     >
       <CardHeader className="flex-1 p-0 w-full">

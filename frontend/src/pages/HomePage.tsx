@@ -3,7 +3,9 @@ import TextbookCard from "@/components/HomePage/TextbookCard";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { UUID } from "crypto";
+
+// Define a custom UUID type to avoid the crypto module import
+type UUID = string;
 
 type Textbook = {
   id: string;
@@ -51,8 +53,8 @@ export default function HomePage() {
 
   // Convert API textbooks to card format and apply search filtering
   useEffect(() => {
-    const convertedBooks: TextbookForCard[] = textbooks.map((book, index) => ({
-      id: book.id, // Use index as numeric ID for card component
+    const convertedBooks: TextbookForCard[] = textbooks.map((book) => ({
+      id: book.id, // Use book's ID for card component
       title: book.title,
       author: book.authors || [],
       category: book.level || "General",

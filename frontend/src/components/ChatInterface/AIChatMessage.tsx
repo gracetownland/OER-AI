@@ -28,30 +28,40 @@ export default function AIChatMessage({
     if (urlMatch) {
       // Format URL sources
       return (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
+        <div className="flex flex-col w-full">
+          <div className="flex items-center gap-1.5">
+            <ExternalLink className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium text-xs">Source link:</span>
+          </div>
           <a
             href={urlMatch[0]}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary hover:underline hover:text-primary/80 transition-colors truncate max-w-[250px]"
+            className="text-primary hover:underline hover:text-primary/80 transition-colors break-words pl-4 text-xs"
             title={urlMatch[0]}
           >
-            {urlMatch[0].replace(/^https?:\/\//, "").replace(/^www\./, "")}
+            {urlMatch[0]}
           </a>
           {pageMatch && (
-            <span className="text-muted-foreground text-xs">
-              (p. {pageMatch[1]})
-            </span>
+            <div className="pl-4 mt-1">
+              <span className="text-muted-foreground text-xs font-medium">
+                Page: {pageMatch[1]}
+              </span>
+            </div>
           )}
         </div>
       );
     } else {
       // Format textbook sources or other references
       return (
-        <div className="flex items-center gap-1.5">
-          <BookOpen className="h-3 w-3 text-muted-foreground flex-shrink-0 mt-0.5" />
-          <span className="text-muted-foreground">{source}</span>
+        <div className="flex flex-col w-full">
+          <div className="flex items-center gap-1.5">
+            <BookOpen className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+            <span className="font-medium text-xs">Source:</span>
+          </div>
+          <span className="text-muted-foreground break-words pl-4 text-xs">
+            {source}
+          </span>
         </div>
       );
     }
@@ -190,13 +200,16 @@ export default function AIChatMessage({
               </Button>
 
               {showSources && (
-                <div className="mt-2 pl-2 border-l-2 border-muted">
-                  <p className="text-xs font-medium text-muted-foreground mb-1">
-                    Sources:
+                <div className="mt-3 w-full">
+                  <p className="text-sm font-medium mb-2 text-foreground/80">
+                    References:
                   </p>
-                  <ul className="space-y-2 list-none pl-0">
+                  <ul className="space-y-4 list-none pl-0 w-full">
                     {sources.map((source, index) => (
-                      <li key={index} className="text-xs flex items-start">
+                      <li
+                        key={index}
+                        className="w-full bg-muted/30 p-2 rounded-md border border-muted"
+                      >
                         {formatSource(source)}
                       </li>
                     ))}
