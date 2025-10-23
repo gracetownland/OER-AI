@@ -28,7 +28,7 @@ bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 # Hardcoded model IDs that are widely available in all AWS regions
 # Using Claude models which are available in ca-central-1
 BEDROCK_LLM_ID = "meta.llama3-70b-instruct-v1:0"  # Hardcoded LLM model ID
-EMBEDDING_MODEL_ID = "amazon.titan-embed-image-v1"  # Hardcoded embedding model ID
+EMBEDDING_MODEL_ID = "amazon.titan-embed-text-v2:0"  # Hardcoded embedding model ID
 
 # Log the hardcoded model IDs being used
 logger.info(f"Using hardcoded model IDs:")
