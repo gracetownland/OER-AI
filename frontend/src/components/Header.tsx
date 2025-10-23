@@ -6,8 +6,8 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { Menu, X } from "lucide-react";
-import { useSidebar } from "@/providers/SidebarContext";
-import { useMode, type Mode } from "@/providers/ModeContext";
+import { useSidebar } from "@/providers/sidebar";
+import { useMode, type Mode } from "@/providers/mode";
 
 export default function Header() {
   const { mobileOpen, toggleMobile } = useSidebar();

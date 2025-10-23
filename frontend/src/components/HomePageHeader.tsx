@@ -5,7 +5,7 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { useMode, type Mode } from "@/providers/ModeContext";
+import { useMode, type Mode } from "@/providers/mode";
 
 export default function HomePageHeader() {
   const { mode, setMode } = useMode();

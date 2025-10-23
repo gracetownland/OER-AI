@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { useSidebar } from "../../providers/SidebarContext";
+import { useSidebar } from "@/providers/sidebar";
 import { useNavigate } from "react-router";
 
 type StudentSideBarProps = {
