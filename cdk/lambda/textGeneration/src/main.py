@@ -25,47 +25,44 @@ secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
 
-# Default model IDs (fallback if SSM parameters cannot be retrieved)
-DEFAULT_LLM_ID = "meta.llama3-70b-instruct-v1:0"
-DEFAULT_EMBEDDING_ID = "amazon.titan-embed-text-v1"
+# Hardcoded model IDs that are widely available in all AWS regions
+# Using Claude models which are available in ca-central-1
+BEDROCK_LLM_ID = "meta.llama3-70b-instruct-v1:0"  # Hardcoded LLM model ID
+EMBEDDING_MODEL_ID = "amazon.titan-embed-image-v1"  # Hardcoded embedding model ID
 
-# Retrieve model IDs from SSM parameters
-BEDROCK_LLM_ID = DEFAULT_LLM_ID
-EMBEDDING_MODEL_ID = DEFAULT_EMBEDDING_ID
+# Log the hardcoded model IDs being used
+logger.info(f"Using hardcoded model IDs:")
+logger.info(f"LLM Model ID: {BEDROCK_LLM_ID}")
+logger.info(f"Embedding Model ID: {EMBEDDING_MODEL_ID}")
 
-try:
-    # Get LLM model ID from SSM parameter
-    if BEDROCK_LLM_PARAM:
-        logger.info(f"Retrieving LLM model ID from SSM parameter: {BEDROCK_LLM_PARAM}")
-        llm_param_response = ssm_client.get_parameter(Name=BEDROCK_LLM_PARAM)
-        BEDROCK_LLM_ID = llm_param_response['Parameter']['Value']
-        logger.info(f"Successfully retrieved LLM model ID: {BEDROCK_LLM_ID}")
-    else:
-        logger.warning(f"BEDROCK_LLM_PARAM environment variable not set. Using default LLM ID: {DEFAULT_LLM_ID}")
-    
-    # Get embedding model ID from SSM parameter
-    if EMBEDDING_MODEL_PARAM:
-        logger.info(f"Retrieving embedding model ID from SSM parameter: {EMBEDDING_MODEL_PARAM}")
-        embedding_param_response = ssm_client.get_parameter(Name=EMBEDDING_MODEL_PARAM)
-        EMBEDDING_MODEL_ID = embedding_param_response['Parameter']['Value']
-        logger.info(f"Successfully retrieved embedding model ID: {EMBEDDING_MODEL_ID}")
-    else:
-        logger.warning(f"EMBEDDING_MODEL_PARAM environment variable not set. Using default embedding ID: {DEFAULT_EMBEDDING_ID}")
-except Exception as e:
-    logger.error(f"Error retrieving model IDs from SSM parameters: {str(e)}", exc_info=True)
-    logger.warning(f"Using default model IDs - LLM: {BEDROCK_LLM_ID}, Embedding: {EMBEDDING_MODEL_ID}")
+# Skip SSM parameter lookup since we're hardcoding the model IDs
+if BEDROCK_LLM_PARAM:
+    logger.info(f"Note: Ignoring SSM parameter {BEDROCK_LLM_PARAM} and using hardcoded model ID instead")
+
+if EMBEDDING_MODEL_PARAM:
+    logger.info(f"Note: Ignoring SSM parameter {EMBEDDING_MODEL_PARAM} and using hardcoded model ID instead")
 
 # Initialize embeddings
 try:
     logger.info(f"Initializing embeddings with model ID: {EMBEDDING_MODEL_ID}")
+    logger.info(f"Using Bedrock runtime client in region: {REGION}")
     embeddings = BedrockEmbeddings(
         model_id=EMBEDDING_MODEL_ID,
         client=bedrock_runtime,
         region_name=REGION
     )
-    logger.info("Embeddings initialized successfully")
+    # Test the embeddings with a simple string to verify they work
+    try:
+        test_embedding = embeddings.embed_query("Test embedding to validate model")
+        logger.info(f"Embeddings test successful. Vector length: {len(test_embedding)}")
+    except Exception as test_error:
+        logger.error(f"Embedding test failed: {str(test_error)}")
+        logger.error(f"This may indicate the model ID {EMBEDDING_MODEL_ID} is not available in region {REGION}")
+        raise
+    logger.info("Embeddings initialized and validated successfully")
 except Exception as e:
     logger.error(f"Error initializing embeddings: {str(e)}", exc_info=True)
+    logger.error(f"Model ID: {EMBEDDING_MODEL_ID}, Region: {REGION}")
     raise
 
 def get_db_credentials():
@@ -113,12 +110,21 @@ def process_query(query, textbook_id, retriever, connection=None):
     # Log the model ID being used
     logger.info(f"Processing query with LLM model ID: '{BEDROCK_LLM_ID}'")
     logger.info(f"Environment variables: REGION={REGION}, RDS_PROXY_ENDPOINT={RDS_PROXY_ENDPOINT}")
-    logger.info(f"SSM Parameter paths: BEDROCK_LLM_PARAM={BEDROCK_LLM_PARAM}, EMBEDDING_MODEL_PARAM={EMBEDDING_MODEL_PARAM}")
     
     try:
         # Initialize LLM
         logger.info(f"Initializing Bedrock LLM with model ID: {BEDROCK_LLM_ID}")
         llm = get_bedrock_llm(BEDROCK_LLM_ID)
+        
+        # Test the LLM with a simple message to verify it works
+        try:
+            logger.info(f"Testing LLM with a simple message...")
+            test_message = llm.invoke("This is a test. Respond with 'OK' if you receive this message.")
+            logger.info(f"LLM test successful. Response content type: {type(test_message)}")
+        except Exception as test_error:
+            logger.error(f"LLM test failed: {str(test_error)}")
+            logger.error(f"This may indicate the model ID {BEDROCK_LLM_ID} is not available in region {REGION}")
+            raise
         
         # Log the embeddings model ID for context
         logger.info(f"Using embedding model ID: {EMBEDDING_MODEL_ID}")
@@ -134,7 +140,12 @@ def process_query(query, textbook_id, retriever, connection=None):
         )
     except Exception as e:
         logger.error(f"Error in process_query: {str(e)}", exc_info=True)
-        raise
+        logger.error(f"Model ID: {BEDROCK_LLM_ID}, Region: {REGION}")
+        # Return a graceful error message
+        return {
+            "response": f"I'm sorry, I encountered an error while processing your question. The error has been logged for our team to investigate.",
+            "sources_used": []
+        }
 
 def handler(event, context):
     """
@@ -148,8 +159,7 @@ def handler(event, context):
     logger.info(f"AWS Region: {REGION}")
     logger.info(f"Lambda function ARN: {context.invoked_function_arn}")
     logger.info(f"Lambda function name: {context.function_name}")
-    logger.info(f"SSM Parameters - LLM: {BEDROCK_LLM_PARAM}, Embeddings: {EMBEDDING_MODEL_PARAM}")
-    logger.info(f"Using model IDs - LLM: {BEDROCK_LLM_ID}, Embeddings: {EMBEDDING_MODEL_ID}")
+    logger.info(f"Using hardcoded model IDs - LLM: {BEDROCK_LLM_ID}, Embeddings: {EMBEDDING_MODEL_ID}")
     
     # Extract parameters from the request
     query_params = event.get("queryStringParameters", {})
@@ -190,31 +200,56 @@ def handler(event, context):
         }
         
         # Get retriever for the textbook
-        retriever = get_textbook_retriever(
-            llm=None,  # Not needed for basic retriever initialization
-            textbook_id=textbook_id,
-            vectorstore_config_dict=vectorstore_config,
-            embeddings=embeddings
-        )
-        
-        if retriever is None:
-            logger.warning(f"No retriever available for textbook {textbook_id}")
+        try:
+            retriever = get_textbook_retriever(
+                llm=None,  # Not needed for basic retriever initialization
+                textbook_id=textbook_id,
+                vectorstore_config_dict=vectorstore_config,
+                embeddings=embeddings
+            )
+            
+            if retriever is None:
+                logger.warning(f"No retriever available for textbook {textbook_id}")
+                return {
+                    "statusCode": 404,
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "*"
+                    },
+                    "body": json.dumps({"error": f"No embeddings found for textbook {textbook_id}"})
+                }
+        except Exception as retriever_error:
+            logger.error(f"Error initializing retriever: {str(retriever_error)}", exc_info=True)
             return {
-                "statusCode": 404,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": f"No embeddings found for textbook {textbook_id}"})
+                "statusCode": 500,
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Access-Control-Allow-Headers": "*",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "*"
+                },
+                "body": json.dumps({"error": f"Failed to initialize retriever: {str(retriever_error)}"})
             }
         
         # Connect to database for custom prompts and logging
         connection = connect_to_db()
         
         # Generate response using helper function
-        response_data = process_query(
-            query=question,
-            textbook_id=textbook_id,
-            retriever=retriever,
-            connection=connection
-        )
+        try:
+            response_data = process_query(
+                query=question,
+                textbook_id=textbook_id,
+                retriever=retriever,
+                connection=connection
+            )
+        except Exception as query_error:
+            logger.error(f"Error processing query: {str(query_error)}", exc_info=True)
+            response_data = {
+                "response": "I apologize, but I'm experiencing technical difficulties at the moment. Our team has been notified of the issue.",
+                "sources_used": []
+            }
         
         try:
             # Log the interaction for analytics purposes
