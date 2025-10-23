@@ -176,7 +176,7 @@ def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, conn
         logger.info("Invoking LLM to generate response...")
         start_time = time.time()
         result = document_chain.invoke({"context": docs, "input": query})
-        response_text = result["answer"]
+        response_text = result.content
         end_time = time.time()
         
         logger.info(f"Response generated in {end_time - start_time:.2f} seconds")
