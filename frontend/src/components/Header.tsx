@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/select";
 import { Menu, X } from "lucide-react";
 import { useSidebar } from "@/providers/SidebarContext";
-import { useMode } from "@/providers/ModeContext";
+import { useMode, type Mode } from "@/providers/ModeContext";
 
 export default function Header() {
   const { mobileOpen, toggleMobile } = useSidebar();
@@ -32,7 +32,7 @@ export default function Header() {
           </button>
           <h1 className="text-xl font-semibold text-white">OpenED AI</h1>
         </div>
-        <Select value={mode} onValueChange={(v) => setMode(v as any)}>
+        <Select value={mode} onValueChange={(v) => setMode(v as Mode)}>
           <SelectTrigger className="w-fit border-primary-foreground bg-transparent text-white  [&_svg:not([class*='text-'])]:text-primary-foreground hover:bg-white/10">
             <SelectValue placeholder="Select mode" />
           </SelectTrigger>
