@@ -15,12 +15,45 @@ logger = logging.getLogger(__name__)
 DB_SECRET_NAME = os.environ["SM_DB_CREDENTIALS"]  # Secret containing database credentials
 REGION = os.environ["REGION"]  # AWS region
 RDS_PROXY_ENDPOINT = os.environ["RDS_PROXY_ENDPOINT"]  # Database proxy endpoint
-BEDROCK_LLM_ID = os.environ.get("BEDROCK_LLM_ID", "meta.llama3-70b-instruct-v1:0")  # LLM model ID
-EMBEDDING_MODEL_ID = os.environ.get("EMBEDDING_MODEL_ID", "amazon.titan-embed-text-v1")  # Embedding model ID
+
+# Get SSM parameter names for models
+BEDROCK_LLM_PARAM = os.environ.get("BEDROCK_LLM_PARAM")  # SSM parameter name for LLM model ID
+EMBEDDING_MODEL_PARAM = os.environ.get("EMBEDDING_MODEL_PARAM")  # SSM parameter name for embedding model ID
 
 # AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
+ssm_client = boto3.client("ssm", region_name=REGION)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
+
+# Default model IDs (fallback if SSM parameters cannot be retrieved)
+DEFAULT_LLM_ID = "meta.llama3-70b-instruct-v1:0"
+DEFAULT_EMBEDDING_ID = "amazon.titan-embed-text-v1"
+
+# Retrieve model IDs from SSM parameters
+BEDROCK_LLM_ID = DEFAULT_LLM_ID
+EMBEDDING_MODEL_ID = DEFAULT_EMBEDDING_ID
+
+try:
+    # Get LLM model ID from SSM parameter
+    if BEDROCK_LLM_PARAM:
+        logger.info(f"Retrieving LLM model ID from SSM parameter: {BEDROCK_LLM_PARAM}")
+        llm_param_response = ssm_client.get_parameter(Name=BEDROCK_LLM_PARAM)
+        BEDROCK_LLM_ID = llm_param_response['Parameter']['Value']
+        logger.info(f"Successfully retrieved LLM model ID: {BEDROCK_LLM_ID}")
+    else:
+        logger.warning(f"BEDROCK_LLM_PARAM environment variable not set. Using default LLM ID: {DEFAULT_LLM_ID}")
+    
+    # Get embedding model ID from SSM parameter
+    if EMBEDDING_MODEL_PARAM:
+        logger.info(f"Retrieving embedding model ID from SSM parameter: {EMBEDDING_MODEL_PARAM}")
+        embedding_param_response = ssm_client.get_parameter(Name=EMBEDDING_MODEL_PARAM)
+        EMBEDDING_MODEL_ID = embedding_param_response['Parameter']['Value']
+        logger.info(f"Successfully retrieved embedding model ID: {EMBEDDING_MODEL_ID}")
+    else:
+        logger.warning(f"EMBEDDING_MODEL_PARAM environment variable not set. Using default embedding ID: {DEFAULT_EMBEDDING_ID}")
+except Exception as e:
+    logger.error(f"Error retrieving model IDs from SSM parameters: {str(e)}", exc_info=True)
+    logger.warning(f"Using default model IDs - LLM: {BEDROCK_LLM_ID}, Embedding: {EMBEDDING_MODEL_ID}")
 
 # Initialize embeddings
 try:
@@ -80,6 +113,7 @@ def process_query(query, textbook_id, retriever, connection=None):
     # Log the model ID being used
     logger.info(f"Processing query with LLM model ID: '{BEDROCK_LLM_ID}'")
     logger.info(f"Environment variables: REGION={REGION}, RDS_PROXY_ENDPOINT={RDS_PROXY_ENDPOINT}")
+    logger.info(f"SSM Parameter paths: BEDROCK_LLM_PARAM={BEDROCK_LLM_PARAM}, EMBEDDING_MODEL_PARAM={EMBEDDING_MODEL_PARAM}")
     
     try:
         # Initialize LLM
@@ -114,6 +148,7 @@ def handler(event, context):
     logger.info(f"AWS Region: {REGION}")
     logger.info(f"Lambda function ARN: {context.invoked_function_arn}")
     logger.info(f"Lambda function name: {context.function_name}")
+    logger.info(f"SSM Parameters - LLM: {BEDROCK_LLM_PARAM}, Embeddings: {EMBEDDING_MODEL_PARAM}")
     logger.info(f"Using model IDs - LLM: {BEDROCK_LLM_ID}, Embeddings: {EMBEDDING_MODEL_ID}")
     
     # Extract parameters from the request
