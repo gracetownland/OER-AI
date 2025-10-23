@@ -712,6 +712,162 @@ export class ApiGatewayStack extends cdk.Stack {
       AutoSignupLambda
     );
 
+    // Create parameters for Bedrock LLM ID, Embedding Model ID, and Table Name in Parameter Store
+    const bedrockLLMParameter = new ssm.StringParameter(
+      this,
+      "BedrockLLMParameter",
+      {
+        parameterName: `/${id}/OER/BedrockLLMId`,
+        description: "Parameter containing the Bedrock LLM ID",
+        stringValue: "meta.llama3-70b-instruct-v1:0",
+      }
+    );
+
+    const embeddingModelParameter = new ssm.StringParameter(
+      this,
+      "EmbeddingModelParameter",
+      {
+        parameterName: `/${id}/OER/EmbeddingModelId`,
+        description: "Parameter containing the Embedding Model ID",
+        stringValue: "amazon.titan-embed-image-v1",
+      }
+    );
+
+    const textGenLambdaDockerFunc = new lambda.DockerImageFunction(
+      this,
+      `${id}-TextGenLambdaDockerFunction`,
+      {
+        code: lambda.DockerImageCode.fromEcr(
+          props.ecrRepositories["textGeneration"],
+          {
+            tagOrDigest: "latest",
+          }
+        ),
+        memorySize: 1024,
+        timeout: cdk.Duration.seconds(300),
+        vpc: vpcStack.vpc,
+        functionName: `${id}-TextGenLambdaDockerFunction`,
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+          REGION: this.region,
+          BEDROCK_LLM_PARAM: bedrockLLMParameter.parameterName,
+          EMBEDDING_MODEL_PARAM: embeddingModelParameter.parameterName,
+          //TABLE_NAME_PARAM: tableNameParameter.parameterName,
+          //GUARDRAIL_ID_PARAM: guardrailParameter.parameterName,
+          //MESSAGE_LIMIT_PARAM: messageLimitParameter.parameterName,
+          //APPSYNC_ENDPOINT: this.eventApi.graphqlUrl,
+          //APPSYNC_API_ID: this.eventApi.apiId,
+        },
+      }
+    );
+
+    // Override the Logical ID
+    const cfnTextGenDockerFunc = textGenLambdaDockerFunc.node
+      .defaultChild as lambda.CfnFunction;
+    cfnTextGenDockerFunc.overrideLogicalId("TextGenLambdaDockerFunc");
+
+    // API Gateway permissions
+    textGenLambdaDockerFunc.addPermission("AllowApiGatewayInvoke", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/chat_sessions*`,
+    });
+
+    // DynamoDB permissions
+    textGenLambdaDockerFunc.role?.attachInlinePolicy(
+      new iam.Policy(this, "DynamoDBReadWritePolicy", {
+        statements: [
+          new iam.PolicyStatement({
+            actions: [
+              "dynamodb:ListTables",
+              "dynamodb:CreateTable",
+              "dynamodb:DescribeTable",
+              "dynamodb:PutItem",
+              "dynamodb:GetItem",
+              "dynamodb:UpdateItem",
+              "dynamodb:Query",
+            ],
+            resources: [
+              `arn:aws:dynamodb:${this.region}:${this.account}:table/*`,
+            ],
+            effect: iam.Effect.ALLOW,
+          }),
+        ],
+      })
+    );
+
+    // Bedrock permissions
+    const textGenBedrockPolicyStatement = new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        "bedrock:InvokeModel",
+        "bedrock:InvokeModelWithResponseStream", // Add streaming permission
+        "bedrock:ApplyGuardrail",
+      ],
+      resources: [
+        `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1`,
+        `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,
+        `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-image-v1`,
+        //`arn:aws:bedrock:${this.region}:${this.account}:guardrail/${bedrockGuardrail.attrGuardrailId}`,
+      ],
+    });
+    textGenLambdaDockerFunc.addToRolePolicy(textGenBedrockPolicyStatement);
+
+    // Secrets Manager access
+    textGenLambdaDockerFunc.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:*`,
+        ],
+      })
+    );
+
+    // SSM Parameter access
+    textGenLambdaDockerFunc.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["ssm:GetParameter"],
+        resources: [
+          bedrockLLMParameter.parameterArn,
+          embeddingModelParameter.parameterArn,
+          //tableNameParameter.parameterArn,
+          //guardrailParameter.parameterArn,
+          //messageLimitParameter.parameterArn,
+        ],
+      })
+    );
+
+    /* AppSync permissions
+    textGenLambdaDockerFunc.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "appsync:GraphQL",
+          "appsync:GetGraphqlApi",
+          "appsync:ListGraphqlApis",
+        ],
+        resources: [
+          `${this.eventApi.arn}/*`,
+          `${this.eventApi.arn}`,
+          this.eventApi.arn,
+        ],
+      })
+    );
+    */
+
+    /* Additional AppSync permission for mutations
+    textGenLambdaDockerFunc.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["appsync:PostToConnection"],
+        resources: [`${this.eventApi.arn}`],
+      })
+    );
+    */
+
     const dataIngestionLambdaDockerFunction = new lambda.DockerImageFunction(
       this,
       `${id}-DataIngestionLambdaDockerFunction`,
@@ -772,21 +928,25 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/user*`,
     });
 
-    const lambdaTextbookFunction = new lambda.Function(this, `${id}-textbookFunction`, {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      code: lambda.Code.fromAsset("lambda"),
-      handler: "handlers/textbookHandler.handler",
-      timeout: Duration.seconds(300),
-      vpc: vpcStack.vpc,
-      environment: {
-        SM_DB_CREDENTIALS: db.secretPathUser.secretName,
-        RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
-      },
-      functionName: `${id}-textbookFunction`,
-      memorySize: 512,
-      layers: [postgres],
-      role: lambdaRole,
-    });
+    const lambdaTextbookFunction = new lambda.Function(
+      this,
+      `${id}-textbookFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromAsset("lambda"),
+        handler: "handlers/textbookHandler.handler",
+        timeout: Duration.seconds(300),
+        vpc: vpcStack.vpc,
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+        },
+        functionName: `${id}-textbookFunction`,
+        memorySize: 512,
+        layers: [postgres],
+        role: lambdaRole,
+      }
+    );
 
     lambdaTextbookFunction.addPermission("AllowApiGatewayInvoke", {
       principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
@@ -804,21 +964,25 @@ export class ApiGatewayStack extends cdk.Stack {
       .defaultChild as lambda.CfnFunction;
     cfnLambda_textbook.overrideLogicalId("textbookFunction");
 
-    const lambdaAdminFunction = new lambda.Function(this, `${id}-adminFunction`, {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      code: lambda.Code.fromAsset("lambda"),
-      handler: "handlers/adminHandler.handler",
-      timeout: Duration.seconds(300),
-      vpc: vpcStack.vpc,
-      environment: {
-        SM_DB_CREDENTIALS: db.secretPathUser.secretName,
-        RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
-      },
-      functionName: `${id}-adminFunction`,
-      memorySize: 512,
-      layers: [postgres],
-      role: lambdaRole,
-    });
+    const lambdaAdminFunction = new lambda.Function(
+      this,
+      `${id}-adminFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromAsset("lambda"),
+        handler: "handlers/adminHandler.handler",
+        timeout: Duration.seconds(300),
+        vpc: vpcStack.vpc,
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+        },
+        functionName: `${id}-adminFunction`,
+        memorySize: 512,
+        layers: [postgres],
+        role: lambdaRole,
+      }
+    );
 
     lambdaAdminFunction.addPermission("AllowApiGatewayInvoke", {
       principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
@@ -836,21 +1000,25 @@ export class ApiGatewayStack extends cdk.Stack {
       .defaultChild as lambda.CfnFunction;
     cfnLambda_admin.overrideLogicalId("adminFunction");
 
-    const lambdaPromptTemplateFunction = new lambda.Function(this, `${id}-promptTemplateFunction`, {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      code: lambda.Code.fromAsset("lambda"),
-      handler: "handlers/promptTemplateHandler.handler",
-      timeout: Duration.seconds(300),
-      vpc: vpcStack.vpc,
-      environment: {
-        SM_DB_CREDENTIALS: db.secretPathUser.secretName,
-        RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
-      },
-      functionName: `${id}-promptTemplateFunction`,
-      memorySize: 512,
-      layers: [postgres],
-      role: lambdaRole,
-    });
+    const lambdaPromptTemplateFunction = new lambda.Function(
+      this,
+      `${id}-promptTemplateFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromAsset("lambda"),
+        handler: "handlers/promptTemplateHandler.handler",
+        timeout: Duration.seconds(300),
+        vpc: vpcStack.vpc,
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+        },
+        functionName: `${id}-promptTemplateFunction`,
+        memorySize: 512,
+        layers: [postgres],
+        role: lambdaRole,
+      }
+    );
 
     lambdaPromptTemplateFunction.addPermission("AllowApiGatewayInvoke", {
       principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
@@ -862,21 +1030,25 @@ export class ApiGatewayStack extends cdk.Stack {
       .defaultChild as lambda.CfnFunction;
     cfnLambda_promptTemplate.overrideLogicalId("promptTemplateFunction");
 
-    const lambdaSharedUserPromptFunction = new lambda.Function(this, `${id}-sharedUserPromptFunction`, {
-      runtime: lambda.Runtime.NODEJS_20_X,
-      code: lambda.Code.fromAsset("lambda"),
-      handler: "handlers/sharedUserPromptHandler.handler",
-      timeout: Duration.seconds(300),
-      vpc: vpcStack.vpc,
-      environment: {
-        SM_DB_CREDENTIALS: db.secretPathUser.secretName,
-        RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
-      },
-      functionName: `${id}-sharedUserPromptFunction`,
-      memorySize: 512,
-      layers: [postgres],
-      role: lambdaRole,
-    });
+    const lambdaSharedUserPromptFunction = new lambda.Function(
+      this,
+      `${id}-sharedUserPromptFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromAsset("lambda"),
+        handler: "handlers/sharedUserPromptHandler.handler",
+        timeout: Duration.seconds(300),
+        vpc: vpcStack.vpc,
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+        },
+        functionName: `${id}-sharedUserPromptFunction`,
+        memorySize: 512,
+        layers: [postgres],
+        role: lambdaRole,
+      }
+    );
 
     lambdaSharedUserPromptFunction.addPermission("AllowApiGatewayInvoke", {
       principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),

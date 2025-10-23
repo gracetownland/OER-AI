@@ -50,6 +50,7 @@ export class CICDStack extends cdk.Stack {
         ],
         resources: [
           `arn:aws:lambda:${this.region}:${this.account}:function:*-DataIngestionLambdaDockerFunction`,
+          `arn:aws:lambda:${this.region}:${this.account}:function:*-TextGenLambdaDockerFunction`,
         ],
       })
     );

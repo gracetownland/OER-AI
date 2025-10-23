@@ -50,11 +50,12 @@ export default function PromptLibraryModal({
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4 items-stretch">
               {prompts.map((prompt) => (
+                // fall back to prompt name if description is missing
                 <PromptCard
                   key={prompt.id}
                   name={prompt.name}
                   onClick={() => {
-                    onSelectPrompt?.(prompt.description);
+                    onSelectPrompt?.(prompt.description ?? prompt.name);
                     onOpenChange(false);
                   }}
                 />
@@ -75,7 +76,7 @@ export default function PromptLibraryModal({
                   key={prompt.id}
                   name={prompt.name}
                   onClick={() => {
-                    onSelectPrompt?.(prompt.description);
+                    onSelectPrompt?.(prompt.description ?? prompt.name);
                     onOpenChange(false);
                   }}
                 />

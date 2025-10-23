@@ -45,8 +45,13 @@ const cicdStack = new CICDStack(app, `${StackPrefix}-CICD`, {
       functionName: `${StackPrefix}-Api-DataIngestionLambdaDockerFunction`,
       sourceDir: "cdk/lambda/dataIngestion",
     },
+    {
+      name: "textGeneration",
+      functionName: `${StackPrefix}-Api-TextGenLambdaDockerFunction`,
+      sourceDir: "cdk/lambda/textGeneration",
+    },
   ],
-  pathFilters: ["cdk/lambda/dataIngestion/**"],
+  pathFilters: ["cdk/lambda/dataIngestion/**", "cdk/lambda/textGeneration/**"],
 });
 const apiStack = new ApiGatewayStack(
   app,
