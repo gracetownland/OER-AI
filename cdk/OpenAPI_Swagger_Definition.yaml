@@ -1640,8 +1640,9 @@ paths:
         - User
       summary: Create chat session for textbook
       operationId: create_textbook_chat_session
-      security:
-        - userAuthorizer: []
+      # Security temporarily disabled to allow public token access
+      # security:
+      #   - userAuthorizer: []
       parameters:
         - name: id
           in: path

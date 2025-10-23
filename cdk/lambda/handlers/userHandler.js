@@ -170,6 +170,7 @@ exports.handler = async (event) => {
         const userSessionId2 = userSession2[0].id;
         const createData = parseBody(event.body);
         const {
+          chat_session_id,
           sender_role,
           query_text,
           response_text,
@@ -184,19 +185,52 @@ exports.handler = async (event) => {
           break;
         }
 
+        // If a chat_session_id is provided, validate it exists and belongs to this user session
+        if (chat_session_id) {
+          const chatSessionRes = await sqlConnection`
+            SELECT id, user_sessions_session_id FROM chat_sessions WHERE id = ${chat_session_id}
+          `;
+
+          if (chatSessionRes.length === 0) {
+            response.statusCode = 400;
+            response.body = JSON.stringify({ error: "Invalid chat_session_id" });
+            break;
+          }
+
+          // Ensure the chat session belongs to this user session
+          const chatSessionOwner = chatSessionRes[0].user_sessions_session_id;
+          if (chatSessionOwner !== userSessionId2) {
+            response.statusCode = 403;
+            response.body = JSON.stringify({ error: "chat_session_id does not belong to the provided user session" });
+            break;
+          }
+        }
+
         const newInteraction = await sqlConnection`
-          INSERT INTO user_interactions (session_id, sender_role, query_text, response_text, message_meta, source_chunks, order_index)
-          VALUES (${userSessionId2}, ${sender_role}, ${query_text || null}, ${
+          INSERT INTO user_interactions (session_id, chat_session_id, sender_role, query_text, response_text, message_meta, source_chunks, order_index)
+          VALUES (${userSessionId2}, ${chat_session_id || null}, ${sender_role}, ${query_text || null}, ${
           response_text || null
         }, ${message_meta || {}}, ${source_chunks || []}, ${
           order_index || null
         })
-          RETURNING id, session_id, sender_role, query_text, response_text, message_meta, source_chunks, created_at, order_index
+          RETURNING id, session_id, chat_session_id, sender_role, query_text, response_text, message_meta, source_chunks, created_at, order_index
         `;
 
         response.statusCode = 201;
         data = newInteraction[0];
         response.body = JSON.stringify(data);
+
+        // If tied to a chat_session, update its last_active_at timestamp
+        try {
+          if (chat_session_id) {
+            await sqlConnection`
+              UPDATE chat_sessions SET last_active_at = NOW() WHERE id = ${chat_session_id}
+            `;
+          }
+        } catch (err) {
+          // non-fatal: log and continue
+          console.warn('Failed to update chat_sessions.last_active_at', err);
+        }
         break;
 
       case "GET /interactions/{id}":
