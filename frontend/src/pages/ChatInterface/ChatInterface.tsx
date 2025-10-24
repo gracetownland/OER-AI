@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import PromptLibraryModal from "@/components/ChatInterface/PromptLibraryModal";
 import Header from "@/components/Header";
 import StudentSideBar from "@/components/ChatInterface/StudentSideBar";
-import { SidebarProvider } from "@/components/ChatInterface/SidebarContext";
+import { SidebarProvider } from "@/providers/SidebarContext";
 import { useLocation } from "react-router";
 import { AiChatInput } from "@/components/ChatInterface/userInput";
 import type { PromptTemplate } from "@/types/Chat";
