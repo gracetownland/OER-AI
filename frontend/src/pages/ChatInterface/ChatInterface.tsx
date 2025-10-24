@@ -5,10 +5,7 @@ import AIChatMessage from "@/components/ChatInterface/AIChatMessage";
 import UserChatMessage from "@/components/ChatInterface/UserChatMessage";
 import { Button } from "@/components/ui/button";
 import PromptLibraryModal from "@/components/ChatInterface/PromptLibraryModal";
-import Header from "@/components/Header";
-import StudentSideBar from "@/components/ChatInterface/StudentSideBar";
-import { SidebarProvider } from "@/providers/SidebarContext";
-import { useLocation } from "react-router";
+import { useTextbook } from "@/providers/textbook";
 import { AiChatInput } from "@/components/ChatInterface/userInput";
 import type { PromptTemplate } from "@/types/Chat";
 
@@ -24,13 +21,9 @@ type Message = {
 
 export default function AIChatPage() {
   const [message, setMessage] = useState("");
-  const location = useLocation();
+  const { textbook } = useTextbook();
 
-  const navTextbook = location.state?.textbook;
-  const textbookTitle = navTextbook?.title ?? "Calculus: Volume 3";
-  const textbookAuthor = navTextbook?.author
-    ? navTextbook.author.join(", ")
-    : "OpenStax";
+  const textbookTitle = textbook?.title ?? "Untitled Textbook";
 
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -190,7 +183,6 @@ export default function AIChatPage() {
     try {
       // Generate a temporary chat session ID (in real app, this would come from session creation)
       const sessionId = "temp-session-id";
-      const textbookId = navTextbook?.id || "temp-textbook-id";
 
       const response = await fetch(
         `${
@@ -202,7 +194,7 @@ export default function AIChatPage() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            textbook_id: textbookId,
+            textbook_id: textbook?.id || "temp-textbook-id",
             query: text,
           }),
         }
@@ -245,18 +237,14 @@ export default function AIChatPage() {
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex flex-col min-h-screen bg-background">
-        <Header />
-        <div className="pt-[70px] flex-1 flex">
-          <StudentSideBar
-            textbookTitle={textbookTitle}
-            textbookAuthor={textbookAuthor}
-          />
-
-          <main
-            className={`md:ml-64 flex flex-col flex-1 items-center justify-center max-w-screen`}
-          >
+    <div className="w-full max-w-2xl 2xl:max-w-3xl px-4 py-4">
+      <div
+        className={`flex flex-col w-full ${
+          messages.length === 0
+            ? "justify-center"
+            : "justify-between min-h-[90vh]"
+        }`}
+      >
             <div
               className={`flex flex-col w-full max-w-2xl 2xl:max-w-3xl px-4 py-4 ${
                 messages.length === 0
@@ -352,9 +340,7 @@ export default function AIChatPage() {
                 setMessage(msg);
               }}
             />
-          </main>
-        </div>
-      </div>
-    </SidebarProvider>
+          </div>
+    </div>
   );
 }

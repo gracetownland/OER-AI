@@ -6,11 +6,13 @@ import { useNavigate } from "react-router";
 type StudentSideBarProps = {
   textbookTitle: string;
   textbookAuthor: string;
+  textbookId?: string;
 };
 
 export default function StudentSideBar({
   textbookTitle,
   textbookAuthor,
+  textbookId
 }: StudentSideBarProps) {
   const { mobileOpen, setMobileOpen } = useSidebar();
   const navigate = useNavigate();
@@ -33,12 +35,20 @@ export default function StudentSideBar({
       <nav className="space-y-2 mb-6">
         <Button
           variant={"link"}
+          onClick={() => {
+            navigate(`/textbook/${textbookId}/chat`);
+            setMobileOpen(false);
+          }}
           className="cursor-pointer w-full justify-start px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-md transition-colors"
         >
-          FAQ Cache
+          Chat Interface
         </Button>
         <Button
           variant={"link"}
+          onClick={() => {
+            navigate(`/textbook/${textbookId}/practice`);
+            setMobileOpen(false);
+          }}
           className="cursor-pointer w-full justify-start px-3 py-2 text-sm text-muted-foreground hover:text-foreground rounded-md transition-colors"
         >
           Practice Material
