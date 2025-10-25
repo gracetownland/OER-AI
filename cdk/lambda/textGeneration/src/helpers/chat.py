@@ -286,7 +286,8 @@ def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, chat
         
         return {
             "response": response_text,
-            "sources_used": sources_used
+            "sources_used": sources_used,
+            "context": result["context"]
         }
         
     except Exception as e:

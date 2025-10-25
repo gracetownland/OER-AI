@@ -275,7 +275,7 @@ def handler(event, context):
                         (chat_session_id, sender_role, query_text, response_text)
                         VALUES (%s, %s, %s, %s)
                         """,
-                        (chat_session_id, "user", question, response_data["response"])
+                        (chat_session_id, "User", question, response_data["response"])
                     )
                 else:
                     cur.execute(
@@ -284,7 +284,7 @@ def handler(event, context):
                         (sender_role, query_text, response_text)
                         VALUES (%s, %s, %s)
                         """,
-                        ("user", question, response_data["response"])
+                        ("User", question, response_data["response"])
                     )
             
             connection.commit()
