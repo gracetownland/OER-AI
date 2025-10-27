@@ -174,11 +174,8 @@ def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, chat
         try:
             guardrail_response = apply_guardrails(query, guardrail_id)
             if guardrail_response.get('blocked', False):
-                if stream_callback:
-                    stream_callback("I cannot process this request as it contains inappropriate content for academic research.")
-            
                 return {
-                    "response": "I cannot process this request as it contains inappropriate content for academic learning.",
+                    "response": "I'm here to help with your learning! However, I can't assist with that particular request. Let's focus on your textbook material instead. What specific topic would you like to explore?",
                     "sources_used": [],
                     "assessments": guardrail_response.get('assessments', [])
                 }

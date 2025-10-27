@@ -43,7 +43,7 @@ def get_secret(secret_name, expect_json=True):
     return db_secret
 
 def get_parameter(param_name, cached_var):
-    if cached_var is None:
+    if cached_var is None and param_name:
         try:
             response = ssm_client.get_parameter(Name=param_name, WithDecryption=True)
             cached_var = response["Parameter"]["Value"]
@@ -53,10 +53,16 @@ def get_parameter(param_name, cached_var):
     return cached_var
 
 def initialize_constants():
-    global BEDROCK_LLM_ID, EMBEDDING_MODEL_ID, embeddings
+    global BEDROCK_LLM_ID, EMBEDDING_MODEL_ID, GUARDRAIL_ID, embeddings
     BEDROCK_LLM_ID = get_parameter(BEDROCK_LLM_PARAM, BEDROCK_LLM_ID)
     EMBEDDING_MODEL_ID = get_parameter(EMBEDDING_MODEL_PARAM, EMBEDDING_MODEL_ID)
-    GUARDRAIL_ID = get_parameter(GUARDRAIL_ID_PARAM, GUARDRAIL_ID)
+    
+    # Handle guardrail ID parameter - it might not be configured
+    if GUARDRAIL_ID_PARAM:
+        GUARDRAIL_ID = get_parameter(GUARDRAIL_ID_PARAM, GUARDRAIL_ID)
+    else:
+        GUARDRAIL_ID = None
+        logger.info("GUARDRAIL_ID_PARAM not configured, guardrails will be disabled")
 
     if embeddings is None:
         embeddings = BedrockEmbeddings(
