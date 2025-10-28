@@ -11,7 +11,7 @@ export default function TextbookLayout() {
   const navigate = useNavigate();
   const [textbook, setTextbook] = useState<Textbook | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     const fetchTextbook = async () => {
@@ -39,7 +39,7 @@ export default function TextbookLayout() {
         const data = await response.json();
         setTextbook(data);
       } catch (err) {
-        setError(err);
+        setError(err as Error);
         navigate("/");
       } finally {
         setLoading(false);
