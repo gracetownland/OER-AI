@@ -21,6 +21,7 @@ import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 interface ApiGatewayStackProps extends cdk.StackProps {
   ecrRepositories: { [key: string]: ecr.Repository };
@@ -272,7 +273,7 @@ export class ApiGatewayStack extends cdk.Stack {
       cloudWatchRole: true,
       deployOptions: {
         stageName: "prod",
-        loggingLevel: apigateway.MethodLoggingLevel.ERROR,
+        loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: true,
         metricsEnabled: true,
         accessLogDestination: new apigateway.LogGroupLogDestination(
@@ -729,7 +730,100 @@ export class ApiGatewayStack extends cdk.Stack {
       {
         parameterName: `/${id}/OER/EmbeddingModelId`,
         description: "Parameter containing the Embedding Model ID",
-        stringValue: "amazon.titan-embed-image-v1",
+        stringValue: "amazon.titan-embed-text-v2:0",
+      }
+    );
+
+    // Create DynamoDB table for session management with 30-day TTL
+    const sessionTable = new dynamodb.Table(this, `${id}-ConversationTable`, {
+      tableName: "DynamoDB-Conversation-Table",
+      partitionKey: {
+        name: "SessionId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "ttl", // Enable TTL on the 'ttl' attribute
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // Use RETAIN for production
+      pointInTimeRecovery: false, // Enable for production if needed
+    });
+
+    // Create Bedrock Guardrails
+    const bedrockGuardrail = new bedrock.CfnGuardrail(
+      this,
+      "BedrockGuardrail",
+      {
+        name: `${id}-oer-guardrail`,
+        description:
+          "Guardrail for OpenEd AI pedagogical tutor to ensure safe and appropriate educational interactions",
+        blockedInputMessaging:
+          "I'm here to help with your learning! However, I can't assist with that particular request. Let's focus on your textbook material instead. What specific topic would you like to explore?",
+        blockedOutputsMessaging:
+          "I want to keep our conversation focused on learning and education. Let me redirect us back to your studies. What concept from your textbook can I help you understand better?",
+        contentPolicyConfig: {
+          filtersConfig: [
+            {
+              type: "PROMPT_ATTACK",
+              inputStrength: "HIGH",
+              outputStrength: "NONE",
+            },
+          ],
+        },
+        sensitiveInformationPolicyConfig: {
+          piiEntitiesConfig: [
+            {
+              type: "EMAIL",
+              action: "BLOCK",
+            },
+            {
+              type: "PHONE",
+              action: "BLOCK",
+            },
+            {
+              type: "CA_SOCIAL_INSURANCE_NUMBER",
+              action: "BLOCK",
+            },
+            {
+              type: "CREDIT_DEBIT_CARD_NUMBER",
+              action: "BLOCK",
+            },
+          ],
+        },
+        topicPolicyConfig: {
+          topicsConfig: [
+            {
+              name: "NonEducationalContent",
+              definition:
+                "Content that diverts from educational purposes, including inappropriate requests, harmful activities, or non-academic discussions that are not suitable for a learning environment",
+              examples: [
+                "How to hack systems or bypass security",
+                "Illegal activities or unethical behavior",
+                "Personal attacks or harassment",
+              ],
+              type: "DENY",
+            },
+            {
+              name: "AcademicIntegrity",
+              definition:
+                "Requests that could compromise academic integrity by providing direct answers to assignments, exams, or homework without educational guidance",
+              examples: [
+                "Complete this assignment for me",
+                "Give me the answers to this test",
+                "Write my essay without explanation",
+              ],
+              type: "DENY",
+            },
+          ],
+        },
+      }
+    );
+
+    const guardrailParameter = new ssm.StringParameter(
+      this,
+      "GuardrailParameter",
+      {
+        parameterName: `/${id}/OER/GuardrailId`,
+        description: "Parameter containing the Bedrock Guardrail ID",
+        stringValue: bedrockGuardrail.attrGuardrailId,
       }
     );
 
@@ -753,8 +847,8 @@ export class ApiGatewayStack extends cdk.Stack {
           REGION: this.region,
           BEDROCK_LLM_PARAM: bedrockLLMParameter.parameterName,
           EMBEDDING_MODEL_PARAM: embeddingModelParameter.parameterName,
-          //TABLE_NAME_PARAM: tableNameParameter.parameterName,
-          //GUARDRAIL_ID_PARAM: guardrailParameter.parameterName,
+          TABLE_NAME_PARAM: sessionTable.tableName,
+          GUARDRAIL_ID_PARAM: guardrailParameter.parameterName,
           //MESSAGE_LIMIT_PARAM: messageLimitParameter.parameterName,
           //APPSYNC_ENDPOINT: this.eventApi.graphqlUrl,
           //APPSYNC_API_ID: this.eventApi.apiId,
@@ -774,25 +868,22 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/chat_sessions*`,
     });
 
-    // DynamoDB permissions
-    textGenLambdaDockerFunc.role?.attachInlinePolicy(
-      new iam.Policy(this, "DynamoDBReadWritePolicy", {
-        statements: [
-          new iam.PolicyStatement({
-            actions: [
-              "dynamodb:ListTables",
-              "dynamodb:CreateTable",
-              "dynamodb:DescribeTable",
-              "dynamodb:PutItem",
-              "dynamodb:GetItem",
-              "dynamodb:UpdateItem",
-              "dynamodb:Query",
-            ],
-            resources: [
-              `arn:aws:dynamodb:${this.region}:${this.account}:table/*`,
-            ],
-            effect: iam.Effect.ALLOW,
-          }),
+    // DynamoDB permissions for the conversation table - Put/Get/Update/Query operations
+    textGenLambdaDockerFunc.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "dynamodb:PutItem", // Put operation
+          "dynamodb:GetItem", // Get operation
+          "dynamodb:UpdateItem", // Update operation
+          "dynamodb:Query", // Query operation
+          "dynamodb:DescribeTable", // Describe table
+          "dynamodb:BatchGetItem", // Batch operations (if needed)
+          "dynamodb:BatchWriteItem", // Batch operations (if needed)
+        ],
+        resources: [
+          sessionTable.tableArn,
+          `${sessionTable.tableArn}/*`, // For GSI/LSI if any are added later
         ],
       })
     );
@@ -808,8 +899,8 @@ export class ApiGatewayStack extends cdk.Stack {
       resources: [
         `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1`,
         `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,
-        `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-image-v1`,
-        //`arn:aws:bedrock:${this.region}:${this.account}:guardrail/${bedrockGuardrail.attrGuardrailId}`,
+        `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+        `arn:aws:bedrock:${this.region}:${this.account}:guardrail/${bedrockGuardrail.attrGuardrailId}`,
       ],
     });
     textGenLambdaDockerFunc.addToRolePolicy(textGenBedrockPolicyStatement);
@@ -833,8 +924,7 @@ export class ApiGatewayStack extends cdk.Stack {
         resources: [
           bedrockLLMParameter.parameterArn,
           embeddingModelParameter.parameterArn,
-          //tableNameParameter.parameterArn,
-          //guardrailParameter.parameterArn,
+          guardrailParameter.parameterArn,
           //messageLimitParameter.parameterArn,
         ],
       })
@@ -963,6 +1053,36 @@ export class ApiGatewayStack extends cdk.Stack {
     const cfnLambda_textbook = lambdaTextbookFunction.node
       .defaultChild as lambda.CfnFunction;
     cfnLambda_textbook.overrideLogicalId("textbookFunction");
+
+    const lambdaChatSessionFunction = new lambda.Function(
+      this,
+      `${id}-chatSessionFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        code: lambda.Code.fromAsset("lambda"),
+        handler: "handlers/chatSessionHandler.handler",
+        timeout: Duration.seconds(300),
+        vpc: vpcStack.vpc,
+        environment: {
+          SM_DB_CREDENTIALS: db.secretPathUser.secretName,
+          RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
+        },
+        functionName: `${id}-chatSessionFunction`,
+        memorySize: 512,
+        layers: [postgres],
+        role: lambdaRole,
+      }
+    );
+
+    lambdaChatSessionFunction.addPermission("AllowApiGatewayInvoke", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks/*/chat_sessions*`,
+    });
+
+    const cfnLambda_chatSession = lambdaChatSessionFunction.node
+      .defaultChild as lambda.CfnFunction;
+    cfnLambda_chatSession.overrideLogicalId("chatSessionFunction");
 
     const lambdaAdminFunction = new lambda.Function(
       this,

@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Outlet, useParams, useNavigate } from 'react-router';
-import { TextbookProvider } from '@/providers/TextbookContext';
-import { SidebarProvider } from '@/providers/SidebarContext';
-import Header from '@/components/Header';
-import StudentSideBar from '@/components/ChatInterface/StudentSideBar';
-import type { Textbook } from '@/types/Textbook';
+import { useState, useEffect } from "react";
+import { Outlet, useParams, useNavigate } from "react-router";
+import { TextbookProvider } from "@/providers/TextbookContext";
+import { SidebarProvider } from "@/providers/SidebarContext";
+import Header from "@/components/Header";
+import StudentSideBar from "@/components/ChatInterface/StudentSideBar";
+import type { Textbook } from "@/types/Textbook";
 
 export default function TextbookLayout() {
   const { id } = useParams();
@@ -16,16 +16,31 @@ export default function TextbookLayout() {
   useEffect(() => {
     const fetchTextbook = async () => {
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/textbooks/${id}`);
+        // Get public token first
+        const tokenResponse = await fetch(
+          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
+        );
+        if (!tokenResponse.ok) throw new Error("Failed to get public token");
+        const { token } = await tokenResponse.json();
+
+        // Make authenticated request
+        const response = await fetch(
+          `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
         if (!response.ok) {
-          throw new Error('Textbook not found');
+          throw new Error("Textbook not found");
         }
         const data = await response.json();
         setTextbook(data);
       } catch (err) {
         setError(err);
-        // Redirect to home page if textbook not found
-        navigate('/');
+        navigate("/");
       } finally {
         setLoading(false);
       }
@@ -40,9 +55,9 @@ export default function TextbookLayout() {
         <div className="flex flex-col min-h-screen bg-background">
           <Header />
           <div className="pt-[70px] flex-1 flex">
-            <StudentSideBar 
-              textbookTitle={textbook?.title || ''} 
-              textbookAuthor={textbook?.authors?.join(', ') || ''}
+            <StudentSideBar
+              textbookTitle={textbook?.title || ""}
+              textbookAuthor={textbook?.authors?.join(", ") || ""}
               textbookId={id}
             />
             <main className="md:ml-64 flex flex-col flex-1 items-start justify-start max-w-screen">

@@ -4,10 +4,40 @@ import traceback
 from typing import Dict, Optional
 from langchain_postgres import PGVector
 from langchain_aws import BedrockEmbeddings
-
+from .helper import get_vectorstore
 # Set up logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+def get_vectorstore_retriever(llm, vectorstore_config_dict: Dict[str, str], embeddings):
+    """Simple vectorstore retriever without complex history awareness."""
+    
+    try:
+        vectorstore, _ = get_vectorstore(
+            collection_name=vectorstore_config_dict['collection_name'],
+            embeddings=embeddings,
+            dbname=vectorstore_config_dict['dbname'],
+            user=vectorstore_config_dict['user'],
+            password=vectorstore_config_dict['password'],
+            host=vectorstore_config_dict['host'],
+            port=int(vectorstore_config_dict['port'])
+        )
+        
+        if vectorstore is None:
+            logger.error("Failed to initialize vectorstore")
+            return None
+            
+        search_kwargs = {"k": 5}
+        retriever = vectorstore.as_retriever(
+            search_type="similarity",
+            search_kwargs=search_kwargs
+        )
+        return retriever
+        
+    except Exception as e:
+        logger.error(f"Error in get_vectorstore_retriever: {str(e)}")
+        logger.error(traceback.format_exc())
+        return None
 
 def get_textbook_retriever(llm, textbook_id: str, vectorstore_config_dict: Dict[str, str], embeddings: BedrockEmbeddings, selected_documents=None) -> Optional[object]:
     """
@@ -32,69 +62,57 @@ def get_textbook_retriever(llm, textbook_id: str, vectorstore_config_dict: Dict[
         logger.info(f"Connecting to database at {vectorstore_config_dict['host']}:{vectorstore_config_dict['port']}")
         logger.info(f"Using database: {vectorstore_config_dict['dbname']}")
         
-        conn = psycopg2.connect(
-            dbname=vectorstore_config_dict['dbname'],
-            user=vectorstore_config_dict['user'],
-            password=vectorstore_config_dict['password'],
-            host=vectorstore_config_dict['host'],
-            port=int(vectorstore_config_dict['port'])
-        )
-        logger.info("Database connection established successfully")
-        
-        # Check if collection exists with embeddings
-        with conn.cursor() as cur:
-            # Check if collection exists
-            cur.execute("SELECT COUNT(*) FROM langchain_pg_collection WHERE name = %s", (textbook_id,))
-            collection_exists = cur.fetchone()[0] > 0
+        conn = None
+        try:
+            conn = psycopg2.connect(
+                dbname=vectorstore_config_dict['dbname'],
+                user=vectorstore_config_dict['user'],
+                password=vectorstore_config_dict['password'],
+                host=vectorstore_config_dict['host'],
+                port=int(vectorstore_config_dict['port'])
+            )
+            logger.info("Database connection established successfully")
             
-            if not collection_exists:
-                logger.warning(f"Collection for textbook {textbook_id} does not exist")
+            # Check if collection exists with embeddings
+            with conn.cursor() as cur:
+                # Check if collection exists
+                cur.execute("SELECT COUNT(*) FROM langchain_pg_collection WHERE name = %s", (textbook_id,))
+                collection_exists = cur.fetchone()[0] > 0
+                
+                if not collection_exists:
+                    logger.warning(f"Collection for textbook {textbook_id} does not exist")
+                    return None
+                
+                # Check if it has embeddings
+                cur.execute("""
+                    SELECT COUNT(*) FROM langchain_pg_embedding 
+                    WHERE collection_id = (SELECT uuid FROM langchain_pg_collection WHERE name = %s)
+                """, (textbook_id,))
+                embedding_count = cur.fetchone()[0]
+                logger.info(f"Collection {textbook_id} has {embedding_count} embeddings")
+                
+                if embedding_count == 0:
+                    logger.warning(f"No embeddings found for textbook {textbook_id}")
+                    return None
+        
+        finally:
+            if conn and not conn.closed:
                 conn.close()
-                return None
-            
-            # Check if it has embeddings
-            cur.execute("""
-                SELECT COUNT(*) FROM langchain_pg_embedding 
-                WHERE collection_id = (SELECT uuid FROM langchain_pg_collection WHERE name = %s)
-            """, (textbook_id,))
-            embedding_count = cur.fetchone()[0]
-            logger.info(f"Collection {textbook_id} has {embedding_count} embeddings")
-            
-            if embedding_count == 0:
-                logger.warning(f"No embeddings found for textbook {textbook_id}")
-                conn.close()
-                return None
         
-        conn.close()
+        # Add collection_name to config for vectorstore creation
+        vectorstore_config_dict['collection_name'] = textbook_id
         
-        # Create vectorstore connection string
-        logger.info("Creating PGVector connection string")
-        connection_string = (
-            f"postgresql+psycopg://{vectorstore_config_dict['user']}:"
-            f"{vectorstore_config_dict['password']}@{vectorstore_config_dict['host']}:"
-            f"{vectorstore_config_dict['port']}/{vectorstore_config_dict['dbname']}"
+        # Create vectorstore and retriever
+        logger.info(f"Creating vectorstore retriever for collection: {textbook_id}")
+        retriever = get_vectorstore_retriever(
+            llm=llm,
+            vectorstore_config_dict=vectorstore_config_dict,
+            embeddings=embeddings
         )
-        logger.info(f"Connection string created (password masked): {connection_string}")
         
-        # Initialize vector store with the textbook_id as collection name
-        logger.info(f"Initializing PGVector with collection name: {textbook_id}")
-        vectorstore = PGVector(
-            embeddings=embeddings,
-            collection_name=textbook_id,
-            connection=connection_string,
-            use_jsonb=True
-        )
-        logger.info("PGVector initialized successfully")
-        
-        # Create retriever with default search parameters
-        logger.info("Creating retriever with similarity search")
-        search_kwargs = {"k": 5}
-        logger.info(f"Search parameters: {search_kwargs}")
-        
-        retriever = vectorstore.as_retriever(
-            search_type="similarity",
-            search_kwargs=search_kwargs
-        )
+        if retriever is None:
+            logger.error(f"Failed to create retriever for textbook: {textbook_id}")
+            return None
         
         logger.info(f"Successfully created retriever for textbook: {textbook_id}")
         return retriever

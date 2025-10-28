@@ -3,8 +3,12 @@ import boto3
 import os
 import time
 from langchain_aws import ChatBedrock, BedrockLLM
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain, create_history_aware_retriever
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_community.chat_message_histories import DynamoDBChatMessageHistory
+from langchain_core.pydantic_v1 import BaseModel, Field
 import logging
 import json
 import traceback
@@ -12,6 +16,12 @@ import traceback
 # Set up logging for this module
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Validate required environment variables
+TABLE_NAME = os.environ.get("TABLE_NAME_PARAM")
+if not TABLE_NAME:
+    logger.error("TABLE_NAME_PARAM environment variable is not set")
+    raise ValueError("TABLE_NAME_PARAM environment variable is required for chat history functionality")
 
 def get_bedrock_llm(
     bedrock_llm_id: str,
@@ -81,6 +91,43 @@ def get_bedrock_llm(
         logger.error(traceback.format_exc())
         raise
 
+def apply_guardrails(text: str, guardrail_id: str, source: str = "INPUT") -> dict:
+    """Apply Bedrock guardrails to input or output text."""
+    try:
+        bedrock_runtime = boto3.client("bedrock-runtime")
+        
+        response = bedrock_runtime.apply_guardrail(
+            guardrailIdentifier=guardrail_id,
+            guardrailVersion="DRAFT", #Use appropriate version once published (e.g., "1", "2", etc.)
+            source=source,
+            content=[
+                {
+                    "text": {
+                        "text": text
+                    }
+                }
+            ]
+        )
+        
+        # Check if content was blocked
+        action = response.get('action', 'NONE')
+        blocked = action == 'GUARDRAIL_INTERVENED'
+        
+        return {
+            'blocked': blocked,
+            'action': action,
+            'assessments': response.get('assessments', [])
+        }
+    except Exception as e:
+        logger.error(f"Error applying guardrails: {str(e)}")
+        logger.error(traceback.format_exc())
+        # Return safe defaults if guardrail check fails
+        return {
+            'blocked': False,
+            'action': 'NONE',
+            'assessments': []
+        }
+
 def get_textbook_prompt(textbook_id: str, connection) -> str:
     """Get a custom prompt for a textbook from the database if available."""
     if connection is None:
@@ -106,23 +153,43 @@ def get_textbook_prompt(textbook_id: str, connection) -> str:
         return None
 
 
-def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, connection=None) -> dict:
+def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, chat_session_id: str, connection=None, guardrail_id: str = None) -> dict:
     """
-    Generate a response to a query using the provided retriever and LLM.
+    Generate a response to a query using the provided retriever and LLM with chat history support.
     
     Args:
         query: The user's question
         textbook_id: The ID of the textbook being queried
         llm: The language model to use for generation
         retriever: The retriever to use for getting relevant document chunks
+        chat_session_id: The session ID for maintaining chat history in DynamoDB
         connection: Database connection for fetching custom prompts (can be None)
         
     Returns:
         A dictionary containing the response and sources_used
     """
+    # Validate required parameters
+
+    if guardrail_id and guardrail_id.strip():
+        try:
+            guardrail_response = apply_guardrails(query, guardrail_id)
+            if guardrail_response.get('blocked', False):
+                return {
+                    "response": "I'm here to help with your learning! However, I can't assist with that particular request. Let's focus on your textbook material instead. What specific topic would you like to explore?",
+                    "sources_used": [],
+                    "assessments": guardrail_response.get('assessments', [])
+                }
+        except Exception as e:
+            logger.warning(f"Guardrail check failed: {e}")
+    
+    if not chat_session_id:
+        logger.warning("No chat_session_id provided, chat history will not be maintained")
+        chat_session_id = f"default-{int(time.time())}"  # Fallback session ID
     logger.info(f"Processing query for textbook ID: {textbook_id}")
     logger.info(f"Query: '{query[:100]}...' (truncated)")
     logger.info(f"LLM model: {getattr(llm, 'model_id', 'Unknown model')}")
+    
+    start_time = time.time()
     
     try:
         # Log retriever info
@@ -157,29 +224,133 @@ def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, conn
         if custom_prompt:
             system_message = custom_prompt
         else:
-            system_message = """You are a helpful assistant that answers questions about textbooks. 
-                              Provide accurate information based only on the content provided.
-                              If the context doesn't contain relevant information to fully answer the question, acknowledge this limitation.
-                              When appropriate, reference specific sections or page numbers from the textbook."""
+            system_message = """You are an engaging pedagogical tutor and learning companion who helps students understand textbook material through interactive conversation. Your role is to:
+
+TEACHING APPROACH:
+- Guide students to discover answers through questioning rather than just providing direct answers
+- Break complex concepts into manageable pieces and check understanding at each step
+- Use the Socratic method: ask probing questions that lead students to insights
+- Encourage active thinking by asking "What do you think?" or "How might you approach this?"
+- Relate new concepts to what students already know or have discussed previously
+
+CONVERSATION STYLE:
+- Be warm, encouraging, and patient - celebrate progress and learning moments
+- Ask follow-up questions to deepen understanding: "Can you explain why that works?" or "What would happen if we changed X?"
+- When a student answers correctly, acknowledge it and build upon their response
+- If a student struggles, provide gentle hints and scaffolding rather than immediate answers
+- Use conversational transitions like "That's a great observation! Now let's think about..." or "Building on what you just said..."
+
+CONTENT DELIVERY:
+- Base all information strictly on the provided textbook context
+- When referencing material, cite specific sections or page numbers when available
+- If the context doesn't contain sufficient information, acknowledge this and suggest what additional resources might help
+- Use examples from the textbook to illustrate concepts when possible
+- Connect different parts of the material to show relationships and build comprehensive understanding
+
+ENGAGEMENT STRATEGIES:
+- End responses with thoughtful questions that encourage continued exploration
+- Suggest practical applications or real-world connections when appropriate
+- Encourage students to summarize their understanding in their own words
+- Ask students to predict outcomes or make connections between concepts
+
+RESPONSE FORMAT:
+- Start by acknowledging their question and showing interest in their learning
+- Instead of directly answering, guide them with questions like "What do you think might be the reason for..." or "Based on what you know about costs, why might this be important?"
+- Provide hints and partial information to scaffold their thinking
+- Always end with a question to continue the dialogue
+- Use phrases like "Let's think about this together..." or "What comes to mind when you consider..."
+
+Remember: Your goal is not just to provide information, but to facilitate active learning and critical thinking through meaningful dialogue. Avoid giving direct answers - always guide through questioning."""
+
+        # Initialize chat history with proper error handling
+        try:
+            chat_history = DynamoDBChatMessageHistory(
+                table_name=TABLE_NAME,
+                session_id=chat_session_id,
+                ttl=3600*24*30 # 30 days expiration (matches DynamoDB table TTL configuration)
+            )
+            
+            # Retrieve existing messages for logging
+            messages = chat_history.messages
+            logger.info(f"Current conversation has {len(messages)} messages in history")
+            for i, msg in enumerate(messages[-4:]):  # Log last 4 messages for context
+                logger.info(f"History[{i}]: {msg.type} - {msg.content[:50]}...")
+                
+        except Exception as history_error:
+            logger.error(f"Error initializing DynamoDB chat history: {history_error}")
+            logger.warning("Proceeding without chat history due to DynamoDB error")
+            # In case of DynamoDB issues, we can still provide a response without history
+            chat_history = None
         
-        # Set up prompt template
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_message),
-            ("human", "{input}\n\nContext from textbook:\n{context}")
+        contextualize_q_system_prompt = """Given a chat history and the latest user question \
+                                            which might reference context in the chat history, formulate a standalone question \
+                                            which can be understood without the chat history. Do NOT answer the question, \
+                                            just reformulate it if needed and otherwise return it as is."""
+        
+        contextualize_q_prompt = ChatPromptTemplate.from_messages([
+            ("system", contextualize_q_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
         ])
-        
+
+        # Create history-aware retriever
+        history_aware_retriever_chain = create_history_aware_retriever(
+            llm, retriever, contextualize_q_prompt
+        )
+
+        qa_system_prompt = f"""{system_message}
+
+Use the following retrieved context from the textbook to guide your pedagogical response. Remember to ask questions and engage the student rather than just providing direct answers:
+
+{{context}}"""
+
+        qa_prompt = ChatPromptTemplate.from_messages([
+            ("system", qa_system_prompt),
+            MessagesPlaceholder("chat_history"),
+            ("human", "{input}"),
+        ])
+
         # Create document chain
-        logger.info("Creating document chain...")
-        document_chain = create_stuff_documents_chain(llm, prompt)
+        question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+
+
+        # Create the full RAG chain
+        rag_chain = create_retrieval_chain(history_aware_retriever_chain, question_answer_chain)
         
-        # Generate response
-        logger.info("Invoking LLM to generate response...")
-        start_time = time.time()
-        result = document_chain.invoke({"context": docs, "input": query})
+        # Create conversational RAG chain with or without message history
+        if chat_history is not None:
+            # Use conversational chain with history
+            conversational_rag_chain = RunnableWithMessageHistory(
+                rag_chain,
+                lambda session_id: DynamoDBChatMessageHistory(
+                    table_name=TABLE_NAME,
+                    session_id=session_id,  # This session_id comes from the lambda parameter
+                    ttl=3600*24*30 # 30 days expiration
+                ),
+                input_messages_key="input",
+                history_messages_key="chat_history",
+                output_messages_key="answer",
+            )
+            
+            result = conversational_rag_chain.invoke(
+                {"input": query},
+                config={"configurable": {"session_id": chat_session_id}}
+            )
+        else:
+            # Fallback: use basic RAG chain without history
+            logger.info("Using RAG chain without chat history due to DynamoDB error")
+            result = rag_chain.invoke({"input": query})
+        
+        # Log the complete result object structure for debugging
+        logger.info(f"RAG chain result type: {type(result)}")
+        logger.info(f"RAG chain result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+        logger.info(f"RAG chain result: {json.dumps(result, indent=2, default=str)[:1000]}...")  # Truncate to avoid too much output
+        
+        response_text = result["answer"]
+        docs = result["context"]
         end_time = time.time()
-        
         logger.info(f"Response generated in {end_time - start_time:.2f} seconds")
-        logger.info(f"Response length: {len(result)} characters")
+        logger.info(f"Response length: {len(response_text)} characters")
         
         # Extract sources used
         sources_used = []
@@ -196,8 +367,8 @@ def get_response(query: str, textbook_id: str, llm: ChatBedrock, retriever, conn
         logger.info(f"Sources used: {sources_used}")
         
         return {
-            "response": result,
-            "sources_used": sources_used
+            "response": response_text,
+            "sources_used": sources_used,
         }
         
     except Exception as e:
