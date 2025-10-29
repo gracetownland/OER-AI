@@ -178,7 +178,7 @@ export default function TextbookLayout() {
               textbookAuthor={textbook?.authors?.join(", ") || ""}
               textbookId={id}
             />
-            <main className="md:ml-64 flex flex-col flex-1 items-start justify-start max-w-screen">
+            <main className="md:ml-64 flex flex-col flex-1 items-center justify-center max-w-screen">
               <Outlet />
             </main>
           </div>
