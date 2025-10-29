@@ -58,12 +58,11 @@ export default function TextbookLayout() {
     };
 
     fetchTextbook();
-  }, [id, navigate]);
+  }, [id]);
 
   // Fetch chat sessions for this textbook
   const fetchChatSessions = async () => {
     if (!id || !userSessionId) {
-      setIsLoadingChatSessions(false);
       return;
     }
 
