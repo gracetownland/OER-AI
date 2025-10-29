@@ -112,7 +112,7 @@ paths:
         type: aws_proxy
       x-amazon-apigateway-request-validator: all
 
-  /chat_sessions/{id}: #this endpoint is just shorter than having all the extra data to slot it under textbooks.
+  /chat_sessions/{chat_session_id}: #this endpoint is just shorter than having all the extra data to slot it under textbooks.
     <<: *commonOptions
     delete:
       tags:
@@ -122,7 +122,7 @@ paths:
       security:
         - adminAuthorizer: []
       parameters:
-        - name: id
+        - name: chat_session_id
           in: path
           required: true
           description: Chat session UUID
@@ -145,7 +145,7 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
-  /chat_sessions/{id}/text_generation:
+  /chat_sessions/{chat_session_id}/text_generation:
     <<: *commonOptions
     post:
       tags:
@@ -153,7 +153,7 @@ paths:
       summary: Generate text response for a chat session
       operationId: generate_text
       parameters:
-        - name: id
+        - name: chat_session_id
           in: path
           required: true
           description: Chat session UUID
@@ -769,7 +769,7 @@ paths:
         type: aws_proxy
       x-amazon-apigateway-request-validator: all
 
-  /interactions/{id}:
+  /interactions/{interaction_id}:
     <<: *commonOptions
     get:
       tags:
@@ -779,7 +779,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: interaction_id
           in: path
           required: true
           description: Interaction UUID
@@ -836,7 +836,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: interaction_id
           in: path
           required: true
           description: Interaction UUID
@@ -913,7 +913,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: interaction_id
           in: path
           required: true
           description: Interaction UUID
@@ -936,7 +936,7 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
-  /analytics/{id}:
+  /analytics/{analytics_id}:
     <<: *commonOptions
     get:
       tags:
@@ -946,7 +946,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: analytics_id
           in: path
           required: true
           description: Analytics event UUID
@@ -994,7 +994,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: analytics_id
           in: path
           required: true
           description: Analytics event UUID
@@ -1054,7 +1054,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: analytics_id
           in: path
           required: true
           description: Analytics event UUID
@@ -1571,7 +1571,7 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
-  /faq/{id}:
+  /faq/{faq_id}:
     <<: *commonOptions
     get:
       tags:
@@ -1581,7 +1581,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: faq_id
           in: path
           required: true
           description: FAQ entry UUID
@@ -1631,7 +1631,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: faq_id
           in: path
           required: true
           description: FAQ entry UUID
@@ -1692,7 +1692,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: faq_id
           in: path
           required: true
           description: FAQ entry UUID
@@ -3539,7 +3539,7 @@ paths:
         type: aws_proxy
       x-amazon-apigateway-request-validator: all
 
-  /shared_prompts/{id}:
+  /shared_prompts/{shared_prompt_id}:
     <<: *commonOptions
     get:
       tags:
@@ -3549,7 +3549,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: shared_prompt_id
           in: path
           required: true
           description: Shared prompt UUID
@@ -3615,7 +3615,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: shared_prompt_id
           in: path
           required: true
           description: Shared prompt UUID
@@ -3702,7 +3702,7 @@ paths:
       security:
         - userAuthorizer: []
       parameters:
-        - name: id
+        - name: shared_prompt_id
           in: path
           required: true
           description: Shared prompt UUID

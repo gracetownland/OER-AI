@@ -130,8 +130,8 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
-      case "GET /shared_prompts/{id}":
-        const promptId = event.pathParameters?.id;
+      case "GET /shared_prompts/{shared_prompt_id}":
+        const promptId = event.pathParameters?.shared_prompt_id;
         if (!promptId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "Prompt ID is required" });
@@ -154,8 +154,8 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
-      case "PUT /shared_prompts/{id}":
-        const updatePromptId = event.pathParameters?.id;
+      case "PUT /shared_prompts/{shared_prompt_id}":
+        const updatePromptId = event.pathParameters?.shared_prompt_id;
         if (!updatePromptId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "Prompt ID is required" });
@@ -183,8 +183,8 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
-      case "DELETE /shared_prompts/{id}":
-        const deletePromptId = event.pathParameters?.id;
+      case "DELETE /shared_prompts/{shared_prompt_id}":
+        const deletePromptId = event.pathParameters?.shared_prompt_id;
         if (!deletePromptId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "Prompt ID is required" });

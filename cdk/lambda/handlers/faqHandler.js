@@ -114,8 +114,8 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
-      case "GET /faq/{id}":
-        const faqId = event.pathParameters?.id;
+      case "GET /faq/{faq_id}":
+        const faqId = event.pathParameters?.faq_id;
         if (!faqId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "FAQ ID is required" });
@@ -138,8 +138,8 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
-      case "PUT /faq/{id}":
-        const putFaqId = event.pathParameters?.id;
+      case "PUT /faq/{faq_id}":
+        const putFaqId = event.pathParameters?.faq_id;
         if (!putFaqId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "FAQ ID is required" });
@@ -190,8 +190,8 @@ exports.handler = async (event) => {
         response.body = JSON.stringify(data);
         break;
         
-      case "DELETE /faq/{id}":
-        const deleteFaqId = event.pathParameters?.id;
+      case "DELETE /faq/{faq_id}":
+        const deleteFaqId = event.pathParameters?.faq_id;
         if (!deleteFaqId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "FAQ ID is required" });
