@@ -16,8 +16,7 @@ export function FaqCard({ question, count, onClick }: FaqCardProps) {
     >
       <CardContent
         className="p-0"
-        style={{ minHeight: `calc(1em * 1.25 * 3)` }}
-      >
+        style={{ minHeight: `calc(1em * 1.25 * ${window.innerWidth < 768 ? 2 : 3})` }}      >
         <h3 className="font-semibold text-base leading-tight mb-auto">
           {question}
         </h3>
@@ -25,9 +24,9 @@ export function FaqCard({ question, count, onClick }: FaqCardProps) {
 
       <CardFooter className="p-0">
         <div className="flex w-full items-center justify-between">
-          <span className="px-4 border rounded-lg text-sm font-medium text-muted-foreground">
+          <p className="px-4 border rounded-lg text-sm font-medium">
             {count}
-          </span>
+          </p>
           {/* report button */}
           <Button
             variant={"link"}
