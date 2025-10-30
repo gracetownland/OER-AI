@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { GenerateForm } from '@/components/PracticeMaterialPage/GenerateForm';
-import { MCQQuestionComponent } from '@/components/PracticeMaterialPage/MCQComponent';
-import type { MCQQuestion, QuestionAnswer } from '@/types/PracticeMaterial';
+import { MCQQuiz } from '@/components/PracticeMaterialPage/MCQQuiz';
+import type { MCQQuestion } from '@/types/PracticeMaterial';
 
 // Dummy MCQ data
 const dummyMCQs: MCQQuestion[] = [
@@ -30,54 +29,8 @@ const dummyMCQs: MCQQuestion[] = [
 ];
 
 export default function PracticeMaterialPage() {
-  const [answers, setAnswers] = useState<QuestionAnswer[]>(
-    dummyMCQs.map(q => ({
-      questionId: q.id,
-      selectedOption: null,
-      isCorrect: null,
-      hasSubmitted: false
-    }))
-  );
-
-  const handleGenerate = (formData: any) => {
+  const handleGenerate = (formData: unknown) => {
     console.log('Generate form data:', formData);
-  };
-
-//   set the answer for that question to be the selected option id
-  const handleAnswerChange = (questionId: string, optionId: string) => {
-    setAnswers(prev => prev.map(answer => 
-      answer.questionId === questionId 
-        ? { ...answer, selectedOption: optionId }
-        : answer
-    ));
-  };
-
-  const handleSubmit = (questionId: string) => {
-    const question = dummyMCQs.find(q => q.id === questionId);
-    if (!question) return;
-
-    setAnswers(prev => prev.map(answer => 
-      answer.questionId === questionId 
-        ? { 
-            ...answer, 
-            hasSubmitted: true,
-            isCorrect: answer.selectedOption === question.correctAnswer
-          }
-        : answer
-    ));
-  };
-
-  const handleReset = (questionId: string) => {
-    setAnswers(prev => prev.map(answer => 
-      answer.questionId === questionId 
-        ? {
-            ...answer,
-            selectedOption: null,
-            isCorrect: null,
-            hasSubmitted: false
-          }
-        : answer
-    ));
   };
 
   return (
@@ -90,20 +43,10 @@ export default function PracticeMaterialPage() {
 
         <div className="w-full md:w-[70%] space-y-6">
           <h2 className="text-2xl font-semibold">Practice Questions</h2>
-          {dummyMCQs.map((question, index) => {
-            const answer = answers.find(a => a.questionId === question.id)!;
-            return (
-              <MCQQuestionComponent
-                key={question.id}
-                question={question}
-                questionNumber={index + 1}
-                answer={answer}
-                onAnswerChange={handleAnswerChange}
-                onSubmit={handleSubmit}
-                onReset={handleReset}
-              />
-            );
-          })}
+          <MCQQuiz
+            title="Calculus Practice Quiz"
+            questions={dummyMCQs}
+          />
         </div>
       </div>
     </div>
