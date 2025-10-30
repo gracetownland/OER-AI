@@ -30,8 +30,8 @@ export function FaqCard({ question, count, onClick }: FaqCardProps) {
           </span>
           {/* report button */}
           <Button
-            variant={"ghost"}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            variant={"link"}
+            className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
             onClick={(e) => {
               e.stopPropagation();
             }}
