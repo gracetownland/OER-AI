@@ -83,27 +83,23 @@ exports.handler = async (event) => {
         if (role) {
           result = await sqlConnection`
             SELECT 
-              sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
-              sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
-              us.role,
+              id, title, prompt_text, owner_session_id, owner_user_id, 
+              textbook_id, role, visibility, tags, created_at, updated_at, metadata,
               COUNT(*) OVER() as total_count
-            FROM shared_user_prompts sup
-            LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
-            WHERE sup.textbook_id = ${sharedTextbookId} AND us.role = ${role}
-            ORDER BY sup.created_at DESC
+            FROM shared_user_prompts
+            WHERE textbook_id = ${sharedTextbookId} AND role = ${role}
+            ORDER BY created_at DESC
             LIMIT ${limit} OFFSET ${offset}
           `;
         } else {
           result = await sqlConnection`
             SELECT 
-              sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
-              sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
-              us.role,
+              id, title, prompt_text, owner_session_id, owner_user_id, 
+              textbook_id, role, visibility, tags, created_at, updated_at, metadata,
               COUNT(*) OVER() as total_count
-            FROM shared_user_prompts sup
-            LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
-            WHERE sup.textbook_id = ${sharedTextbookId}
-            ORDER BY sup.created_at DESC
+            FROM shared_user_prompts
+            WHERE textbook_id = ${sharedTextbookId}
+            ORDER BY created_at DESC
             LIMIT ${limit} OFFSET ${offset}
           `;
         }
@@ -133,7 +129,7 @@ exports.handler = async (event) => {
         }
         
         const createData = parseBody(event.body);
-        const { title, prompt_text, owner_session_id, owner_user_id, visibility, tags, metadata } = createData;
+        const { title, prompt_text, owner_session_id, owner_user_id, role, visibility, tags, metadata } = createData;
         
         if (!prompt_text) {
           response.statusCode = 400;
@@ -142,9 +138,9 @@ exports.handler = async (event) => {
         }
         
         const newPrompt = await sqlConnection`
-          INSERT INTO shared_user_prompts (title, prompt_text, owner_session_id, owner_user_id, textbook_id, visibility, tags, metadata)
-          VALUES (${title || null}, ${prompt_text}, ${owner_session_id || null}, ${owner_user_id || null}, ${postSharedTextbookId}, ${visibility || 'public'}, ${tags || []}, ${metadata || {}})
-          RETURNING id, title, prompt_text, owner_session_id, owner_user_id, textbook_id, visibility, tags, created_at, updated_at, metadata
+          INSERT INTO shared_user_prompts (title, prompt_text, owner_session_id, owner_user_id, textbook_id, role, visibility, tags, metadata)
+          VALUES (${title || null}, ${prompt_text}, ${owner_session_id || null}, ${owner_user_id || null}, ${postSharedTextbookId}, ${role || null}, ${visibility || 'public'}, ${tags || []}, ${metadata || {}})
+          RETURNING id, title, prompt_text, owner_session_id, owner_user_id, textbook_id, role, visibility, tags, created_at, updated_at, metadata
         `;
         
         response.statusCode = 201;
@@ -162,12 +158,10 @@ exports.handler = async (event) => {
         
         const prompt = await sqlConnection`
           SELECT 
-            sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
-            sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
-            us.role
-          FROM shared_user_prompts sup
-          LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
-          WHERE sup.id = ${promptId}
+            id, title, prompt_text, owner_session_id, owner_user_id, 
+            textbook_id, role, visibility, tags, created_at, updated_at, metadata
+          FROM shared_user_prompts
+          WHERE id = ${promptId}
         `;
         
         if (prompt.length === 0) {
@@ -205,18 +199,16 @@ exports.handler = async (event) => {
           break;
         }
 
-        // Fetch the updated prompt with role via JOIN
-        const updatedWithRole = await sqlConnection`
+        // Fetch the updated prompt
+        const updatedPrompt = await sqlConnection`
           SELECT 
-            sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
-            sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
-            us.role
-          FROM shared_user_prompts sup
-          LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
-          WHERE sup.id = ${updatePromptId}
+            id, title, prompt_text, owner_session_id, owner_user_id, 
+            textbook_id, role, visibility, tags, created_at, updated_at, metadata
+          FROM shared_user_prompts
+          WHERE id = ${updatePromptId}
         `;
         
-        data = updatedWithRole[0];
+        data = updatedPrompt[0];
         response.body = JSON.stringify(data);
         break;
         

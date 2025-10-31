@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
 import { useUserSession } from "@/providers/usersession";
+import { useMode } from "@/providers/mode";
 
 // Props for saving a user's message as a shared prompt
 type UserChatMessageProps = {
@@ -29,6 +30,7 @@ export default function UserChatMessage({ text, textbookId, onSaveSuccess, onSav
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { sessionUuid } = useUserSession();
+  const { mode } = useMode();
 
   function handleOpen() {
     setName("");
@@ -63,6 +65,7 @@ export default function UserChatMessage({ text, textbookId, onSaveSuccess, onSav
             title: name || null,
             prompt_text: prompt,
             owner_session_id: sessionUuid || null,
+            role: mode,
             visibility: "public",
             tags: [],
             metadata: {},
