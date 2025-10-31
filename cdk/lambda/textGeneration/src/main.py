@@ -5,7 +5,7 @@ import logging
 import psycopg2
 from langchain_aws import BedrockEmbeddings
 from helpers.vectorstore import get_textbook_retriever
-from helpers.chat import get_bedrock_llm, get_response_streaming
+from helpers.chat import get_bedrock_llm, get_response_streaming, get_response
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
