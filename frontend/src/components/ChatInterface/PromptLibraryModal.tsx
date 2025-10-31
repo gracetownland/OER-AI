@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ type PromptLibraryModalProps = {
   prompts?: PromptTemplate[];
   sharedPrompts?: SharedUserPrompt[];
   onSelectPrompt?: (prompt: string) => void;
+  onFetchSharedPrompts?: () => void; // Callback to trigger fetch
   title?: string;
   children?: React.ReactNode;
 };
@@ -26,7 +27,15 @@ export default function PromptLibraryModal({
   prompts = [],
   sharedPrompts = [],
   onSelectPrompt,
+  onFetchSharedPrompts,
 }: PromptLibraryModalProps) {
+  // Fetch shared prompts when modal opens
+  useEffect(() => {
+    if (open && onFetchSharedPrompts) {
+      onFetchSharedPrompts();
+    }
+  }, [open, onFetchSharedPrompts]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[90vw] sm:w-fit max-w-3xl sm:max-w-5xl max-h-[80vh] overflow-y-auto">

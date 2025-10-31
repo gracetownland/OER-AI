@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ChevronDown, LibraryBig } from "lucide-react";
 import PromptCard from "@/components/ChatInterface/PromptCard";
 import AIChatMessage from "@/components/ChatInterface/AIChatMessage";
@@ -176,37 +176,33 @@ export default function AIChatPage() {
   }, []);
 
   // Fetch shared prompts from API filtered by current mode
-  useEffect(() => {
-    const fetchSharedPrompts = async () => {
-      if (!textbook?.id) return; // Need textbook_id
-      try {
-        // Acquire public token
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResponse.json();
+  const fetchSharedPrompts = useCallback(async () => {
+    if (!textbook?.id) return; // Need textbook_id
+    try {
+      // Acquire public token
+      const tokenResponse = await fetch(
+        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
+      );
+      if (!tokenResponse.ok) throw new Error("Failed to get public token");
+      const { token } = await tokenResponse.json();
 
-        // Pass role as query param to backend
-        const response = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${textbook.id}/shared_prompts?role=${mode}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        const data = await response.json();
-        const allSharedPrompts = data.prompts || [];
-        setSharedPrompts(allSharedPrompts);
-      } catch (error) {
-        console.error("Error fetching shared prompts:", error);
-        setSharedPrompts([]);
-      }
-    };
-
-    fetchSharedPrompts();
-  }, [textbook?.id, mode]); // Re-fetch when textbook id or mode changes
+      // Pass role as query param to backend
+      const response = await fetch(
+        `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${textbook.id}/shared_prompts?role=${mode}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.json();
+      const allSharedPrompts = data.prompts || [];
+      setSharedPrompts(allSharedPrompts);
+    } catch (error) {
+      console.error("Error fetching shared prompts:", error);
+      setSharedPrompts([]);
+    }
+  }, [textbook?.id, mode]);
 
   async function sendMessage() {
     const text = message.trim();
@@ -275,7 +271,13 @@ export default function AIChatPage() {
 
   function messageFormatter(message: Message) {
     if (message.sender === "user") {
-      return <UserChatMessage key={message.id} text={message.text} />;
+      return (
+        <UserChatMessage
+          key={message.id}
+          text={message.text}
+          textbookId={textbook?.id || ""}
+        />
+      );
     } else {
       return (
         <AIChatMessage
@@ -397,6 +399,7 @@ export default function AIChatPage() {
           onSelectPrompt={(msg) => {
             setMessage(msg);
           }}
+          onFetchSharedPrompts={fetchSharedPrompts}
         />
       </div>
     </div>

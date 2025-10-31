@@ -78,24 +78,35 @@ exports.handler = async (event) => {
         const offset = parseInt(event.queryStringParameters?.offset) || 0;
         const role = event.queryStringParameters?.role;
 
-        // Build dynamic WHERE clause
-        let whereClause = sqlConnection`sup.textbook_id = ${sharedTextbookId}`;
+        // Build query conditionally based on role filter
+        let result;
         if (role) {
-          whereClause = sqlConnection`sup.textbook_id = ${sharedTextbookId} AND us.role = ${role}`;
+          result = await sqlConnection`
+            SELECT 
+              sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
+              sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
+              us.role,
+              COUNT(*) OVER() as total_count
+            FROM shared_user_prompts sup
+            LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
+            WHERE sup.textbook_id = ${sharedTextbookId} AND us.role = ${role}
+            ORDER BY sup.created_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `;
+        } else {
+          result = await sqlConnection`
+            SELECT 
+              sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
+              sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
+              us.role,
+              COUNT(*) OVER() as total_count
+            FROM shared_user_prompts sup
+            LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
+            WHERE sup.textbook_id = ${sharedTextbookId}
+            ORDER BY sup.created_at DESC
+            LIMIT ${limit} OFFSET ${offset}
+          `;
         }
-
-        const result = await sqlConnection`
-          SELECT 
-            sup.id, sup.title, sup.prompt_text, sup.owner_session_id, sup.owner_user_id, 
-            sup.textbook_id, sup.visibility, sup.tags, sup.created_at, sup.updated_at, sup.metadata,
-            us.role,
-            COUNT(*) OVER() as total_count
-          FROM shared_user_prompts sup
-          LEFT JOIN user_sessions us ON us.id = sup.owner_session_id
-          WHERE ${whereClause}
-          ORDER BY sup.created_at DESC
-          LIMIT ${limit} OFFSET ${offset}
-        `;
 
         const total = result.length > 0 ? parseInt(result[0].total_count) : 0;
         const prompts = result.map(({ total_count, ...prompt }) => prompt);
