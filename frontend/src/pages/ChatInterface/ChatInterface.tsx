@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { ChevronDown, LibraryBig } from "lucide-react";
 import PromptCard from "@/components/ChatInterface/PromptCard";
 import AIChatMessage from "@/components/ChatInterface/AIChatMessage";
@@ -11,6 +11,7 @@ import { SidebarProvider } from "@/providers/SidebarContext";
 import { useLocation, useNavigate } from "react-router";
 import { useUserSession } from "@/contexts/UserSessionContext";
 import { AiChatInput } from "@/components/ChatInterface/userInput";
+import { useWebSocket } from "@/hooks/useWebSocket";
 import type { PromptTemplate } from "@/types/Chat";
 
 type Message = {
@@ -30,6 +31,10 @@ export default function AIChatPage() {
   const [seeMore, setSeeMore] = useState(false);
   const [showLibrary, setShowLibrary] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
+    null
+  );
 
   // Hooks and location state
   const location = useLocation();
@@ -42,6 +47,77 @@ export default function AIChatPage() {
   const textbookAuthor = navTextbook?.author
     ? navTextbook.author.join(", ")
     : "OpenStax";
+
+  // WebSocket configuration
+  const webSocketUrl = useMemo(() => import.meta.env.VITE_WEBSOCKET_URL, []);
+  console.log("[WebSocket] Attempting connection to:", webSocketUrl);
+
+  // WebSocket message handlers
+  const handleWebSocketMessage = (message: any) => {
+    console.log("[WebSocket] Received message:", message);
+
+    switch (message.type) {
+      case "start":
+        setIsStreaming(true);
+        break;
+
+      case "chunk":
+        if (message.content && streamingMessageId) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId
+                ? { ...msg, text: msg.text + message.content }
+                : msg
+            )
+          );
+        }
+        break;
+
+      case "complete":
+        setIsStreaming(false);
+        setStreamingMessageId(null);
+        if (message.sources && streamingMessageId) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId
+                ? { ...msg, sources_used: message.sources }
+                : msg
+            )
+          );
+        }
+        break;
+
+      case "error":
+        setIsStreaming(false);
+        setStreamingMessageId(null);
+        if (streamingMessageId) {
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === streamingMessageId
+                ? { ...msg, text: message.message || "An error occurred" }
+                : msg
+            )
+          );
+        }
+        break;
+    }
+  };
+
+  const { sendMessage: sendWebSocketMessage, isConnected } = useWebSocket(
+    webSocketUrl,
+    {
+      onMessage: handleWebSocketMessage,
+      onConnect: () => {
+        console.log("[WebSocket] Connected to:", webSocketUrl);
+      },
+      onDisconnect: () => {
+        console.log("[WebSocket] Disconnected from:", webSocketUrl);
+      },
+      onError: (error) => {
+        console.error("[WebSocket] Error:", error, "URL:", webSocketUrl);
+      },
+    }
+  );
 
   // Load chat history and redirect if no chat session ID
   useEffect(() => {
@@ -283,10 +359,54 @@ export default function AIChatPage() {
       time: Date.now(),
     };
 
-    // append user message
-    setMessages((m) => [...m, userMsg]);
-    setMessage("");
+    // Create bot message placeholder for streaming
+    const botMsg: Message = {
+      id: `${Date.now() + 1}-${Math.random().toString(36).slice(2, 9)}`,
+      sender: "bot",
+      text: "",
+      sources_used: [],
+      time: Date.now() + 1,
+    };
 
+    // append user and bot messages
+    setMessages((m) => [...m, userMsg, botMsg]);
+    setMessage("");
+    setStreamingMessageId(botMsg.id);
+    setIsStreaming(true);
+
+    // Try WebSocket streaming first, fallback to HTTP if not connected
+    if (isConnected && webSocketUrl) {
+      console.log("[WebSocket] Sending message via WebSocket:", {
+        action: "generate_text",
+        textbook_id: navTextbook.id,
+        query: text,
+        chat_session_id: chatSessionId,
+      });
+      const success = sendWebSocketMessage({
+        action: "generate_text",
+        textbook_id: navTextbook.id,
+        query: text,
+        chat_session_id: chatSessionId,
+      });
+
+      if (success) {
+        console.log("[WebSocket] Message sent successfully.");
+        return;
+      } else {
+        console.warn("[WebSocket] Message send failed. WebSocket not open.");
+      }
+    } else {
+      if (!isConnected) {
+        console.warn("[WebSocket] Not connected. Falling back to HTTP.");
+      } else {
+        console.log(
+          "[WebSocket] Connection is active. Proceeding with WebSocket message."
+        );
+      }
+    }
+
+    // Fallback to HTTP API if WebSocket is not available
+    console.log("[WebSocket] Fallback: Sending message via HTTP API...");
     try {
       // Get fresh token for the request
       const tokenResponse = await fetch(
@@ -317,23 +437,34 @@ export default function AIChatPage() {
 
       const data = await response.json();
 
-      const botMsg: Message = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        sender: "bot",
-        text: data.response || "Sorry, I couldn't generate a response.",
-        sources_used: data.sources || [],
-        time: Date.now(),
-      };
-      setMessages((m) => [...m, botMsg]);
+      // Update the bot message with the complete response
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMsg.id
+            ? {
+                ...msg,
+                text: data.response || "Sorry, I couldn't generate a response.",
+                sources_used: data.sources || [],
+              }
+            : msg
+        )
+      );
     } catch (error) {
       console.error("Error generating text:", error);
-      const errorMsg: Message = {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-        sender: "bot",
-        text: "Sorry, there was an error processing your request.",
-        time: Date.now(),
-      };
-      setMessages((m) => [...m, errorMsg]);
+      // Update the bot message with error
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMsg.id
+            ? {
+                ...msg,
+                text: "Sorry, there was an error processing your request.",
+              }
+            : msg
+        )
+      );
+    } finally {
+      setIsStreaming(false);
+      setStreamingMessageId(null);
     }
   }
 

@@ -388,24 +388,36 @@ def get_response_streaming(
         apigatewaymanagementapi = boto3.client('apigatewaymanagementapi', endpoint_url=websocket_endpoint)
         
         # Send start message
-        apigatewaymanagementapi.post_to_connection(
-            ConnectionId=connection_id,
-            Data=json.dumps({
-                "type": "start",
-                "message": "Processing your question..."
-            })
-        )
+        try:
+            apigatewaymanagementapi.post_to_connection(
+                ConnectionId=connection_id,
+                Data=json.dumps({
+                    "type": "start",
+                    "message": "Processing your question..."
+                })
+            )
+        except Exception as ws_error:
+            logger.error(f"WebSocket connection closed during start message: {ws_error}")
+            logger.error(f"Connection ID: {connection_id}, Endpoint: {websocket_endpoint}")
+            # Connection is gone, return response without streaming
+            return {
+                "response": "Connection closed before processing could complete.",
+                "sources_used": []
+            }
         
         # Apply input guardrails using helper function
         guardrail_assessments, guardrail_error = _apply_input_guardrails(query, guardrail_id)
         if guardrail_error:
-            apigatewaymanagementapi.post_to_connection(
-                ConnectionId=connection_id,
-                Data=json.dumps({
-                    "type": "error",
-                    "message": guardrail_error
-                })
-            )
+            try:
+                apigatewaymanagementapi.post_to_connection(
+                    ConnectionId=connection_id,
+                    Data=json.dumps({
+                        "type": "error",
+                        "message": guardrail_error
+                    })
+                )
+            except Exception:
+                logger.warning("WebSocket connection closed during guardrail error")
             return {
                 "response": guardrail_error,
                 "sources_used": [],
@@ -451,13 +463,18 @@ def get_response_streaming(
                     if content:
                         full_response += content
                         # Send chunk via WebSocket
-                        apigatewaymanagementapi.post_to_connection(
-                            ConnectionId=connection_id,
-                            Data=json.dumps({
-                                "type": "chunk",
-                                "content": content
-                            })
-                        )
+                        try:
+                            apigatewaymanagementapi.post_to_connection(
+                                ConnectionId=connection_id,
+                                Data=json.dumps({
+                                    "type": "chunk",
+                                    "content": content
+                                })
+                            )
+                        except Exception as chunk_error:
+                            logger.error(f"WebSocket connection closed during streaming: {chunk_error}")
+                            logger.error(f"Processing time so far: {time.time() - start_time:.2f} seconds")
+                            break
                 # Extract sources from context if available
                 if "context" in chunk:
                     docs = chunk["context"]
@@ -482,13 +499,16 @@ def get_response_streaming(
                 sources_used = _extract_sources_from_docs(docs)
                 
                 # Send the complete response as one chunk
-                apigatewaymanagementapi.post_to_connection(
-                    ConnectionId=connection_id,
-                    Data=json.dumps({
-                        "type": "chunk",
-                        "content": full_response
-                    })
-                )
+                try:
+                    apigatewaymanagementapi.post_to_connection(
+                        ConnectionId=connection_id,
+                        Data=json.dumps({
+                            "type": "chunk",
+                            "content": full_response
+                        })
+                    )
+                except Exception:
+                    logger.warning("WebSocket connection closed during fallback")
             except Exception as fallback_error:
                 logger.error(f"Fallback also failed: {fallback_error}")
                 error_msg = "Sorry, I encountered an error processing your question."
@@ -507,13 +527,16 @@ def get_response_streaming(
             # Note: WebSocket correction message would need to be sent here if response was modified
         
         # Send completion message with sources
-        apigatewaymanagementapi.post_to_connection(
-            ConnectionId=connection_id,
-            Data=json.dumps({
-                "type": "complete",
-                "sources": sources_used
-            })
-        )
+        try:
+            apigatewaymanagementapi.post_to_connection(
+                ConnectionId=connection_id,
+                Data=json.dumps({
+                    "type": "complete",
+                    "sources": sources_used
+                })
+            )
+        except Exception:
+            logger.warning("WebSocket connection closed during completion")
         
         end_time = time.time()
         logger.info(f"Streaming response completed in {end_time - start_time:.2f} seconds")
