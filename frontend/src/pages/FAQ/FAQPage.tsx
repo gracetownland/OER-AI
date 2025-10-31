@@ -1,4 +1,5 @@
 import { FaqCard } from "@/components/FAQPage/FaqCard";
+import { FaqListItem } from "@/components/FAQPage/FaqListItem";
 import type { FAQ } from "@/types/FAQ";
 
 const faqData: FAQ[] = [
@@ -68,6 +69,8 @@ const faqData: FAQ[] = [
   },
 ];
 
+// at most only have 20?
+
 export default function FAQPage() {
   return (
     <main className="min-h-screen bg-background py-12 px-4 sm:px-6 lg:px-8">
@@ -79,12 +82,30 @@ export default function FAQPage() {
           <p className="text-muted-foreground text-lg">click on a card to learn more.</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+        {/* Mobile: List View */}
+        <div className="sm:hidden bg-card rounded-lg border border-border overflow-hidden">
+          {faqData.map((faq) => (
+            <FaqListItem
+              key={faq.id}
+              question={faq.question_text}
+              count={faq.usage_count}
+              onClick={() => {
+                console.log(`Clicked: ${faq.question_text}`);
+              }}
+            />
+          ))}
+        </div>
+
+        {/* Desktop/Tablet: Card Grid */}
+        <div className="hidden sm:grid sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
           {faqData.map((faq) => (
             <FaqCard
               key={faq.id}
               question={faq.question_text}
               count={faq.usage_count}
+              onClick={() => {
+                console.log(`Clicked: ${faq.question_text}`);
+              }}
             />
           ))}
         </div>

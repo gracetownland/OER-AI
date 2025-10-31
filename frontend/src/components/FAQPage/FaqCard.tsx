@@ -11,11 +11,11 @@ interface FaqCardProps {
 export function FaqCard({ question, count, onClick }: FaqCardProps) {
   return (
     <Card
-      className="p-[10px] flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] bg-muted/30"
+      className="gap-1 sm:gap-6 p-[10px] flex-col justify-between cursor-pointer transition-all hover:shadow-md hover:scale-[1.02] bg-muted/30"
       onClick={onClick}
     >
       <CardContent
-        className="p-0"
+        className="p-0 max-h-2.5 sm:max-h-none"
         style={{ minHeight: `calc(1em * 1.25 * ${window.innerWidth < 768 ? 2 : 3})` }}      >
         <h3 className="font-semibold text-base leading-tight mb-auto">
           {question}
