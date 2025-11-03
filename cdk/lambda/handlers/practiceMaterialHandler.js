@@ -1,5 +1,7 @@
-// Minimal handler for generating practice materials (MCQs)
-// For MVP, this returns structured dummy data based on input. Later, integrate Bedrock.
+// Handler for generating practice materials (MCQs)
+// Now wired to Amazon Bedrock (Titan) to generate JSON questions directly.
+
+const { BedrockRuntimeClient, InvokeModelCommand } = require("@aws-sdk/client-bedrock-runtime");
 
 const createResponse = () => ({
   statusCode: 200,
@@ -32,6 +34,147 @@ function generateOptionId(index) {
 
 // Clamp helper to bound numeric inputs
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+// Environment
+const REGION = process.env.REGION || process.env.AWS_REGION || "ca-central-1";
+// Provide a model id via env for flexibility; fallback to Titan Text Express if not set
+// Example for env: PRACTICE_MATERIAL_MODEL_ID="amazon.titan-text-express-v1" or Titan multimodal ID when available
+const MODEL_ID = process.env.PRACTICE_MATERIAL_MODEL_ID || "amazon.titan-text-express-v1";
+
+// Build JSON-only prompt with fixed schema and counts
+function buildPrompt({ topic, difficulty, numQuestions, numOptions }) {
+  const optionIds = Array.from({ length: numOptions }, (_, i) => generateOptionId(i)).join('", "');
+  return `
+You are an assistant that generates practice materials in strict JSON. Output ONLY valid JSON. No markdown, no commentary.
+
+Constraints:
+- topic: "${topic}"
+- difficulty: "${difficulty}" (one of: "introductory", "intermediate", "advanced")
+- num_questions: ${numQuestions}
+- num_options: ${numOptions}
+- For each question, options must have ids exactly: ["${optionIds}"] in that order.
+- correctAnswer must be one of these ids and match an existing option.
+- Do not include any fields other than specified below.
+- No trailing commas. Ensure valid JSON.
+
+JSON schema (conceptual):
+{
+  "title": string,
+  "questions": [
+    {
+      "id": string,
+      "questionText": string,
+      "options": [
+        { "id": "a", "text": string, "explanation": string }
+      ],
+      "correctAnswer": "a"
+    }
+  ]
+}
+
+Template to follow (update values; lengths must match constraints):
+{
+  "title": "Practice Quiz: ${topic}",
+  "questions": [
+    {
+      "id": "q1",
+      "questionText": "(${difficulty}) [${topic}] <question>?",
+      "options": [
+        { "id": "a", "text": "<option-a>", "explanation": "<explain-a>" }
+      ],
+      "correctAnswer": "a"
+    }
+  ]
+}
+
+Generate exactly ${numQuestions} questions and exactly ${numOptions} options per question. Output JSON only.
+`.trim();
+}
+
+// Invoke Titan model and return raw text output
+async function invokeTitanJSON(prompt) {
+  const client = new BedrockRuntimeClient({ region: REGION });
+
+  const payload = {
+    inputText: prompt,
+    textGenerationConfig: {
+      // High temperature for variety as requested
+      temperature: 0.9,
+      maxTokenCount: 512,
+      topP: 0.9,
+    },
+  };
+
+  const cmd = new InvokeModelCommand({
+    modelId: MODEL_ID,
+    contentType: "application/json",
+    accept: "application/json",
+    body: JSON.stringify(payload),
+  });
+
+  const res = await client.send(cmd);
+  const utf8 = Buffer.from(res.body).toString("utf-8");
+  try {
+    const parsed = JSON.parse(utf8);
+    return (
+      parsed?.results?.[0]?.outputText || parsed?.outputText || parsed?.generation || ""
+    );
+  } catch {
+    return utf8;
+  }
+}
+
+// Extract the first JSON object and parse
+function tryParseJsonStrict(text) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("Model response did not contain JSON object");
+  }
+  const jsonSlice = text.slice(start, end + 1);
+  return JSON.parse(jsonSlice);
+}
+
+// Validate structure and counts
+function validateResultShape(obj, { numQuestions, numOptions }) {
+  if (!obj || typeof obj !== "object") throw new Error("Invalid JSON root");
+  if (typeof obj.title !== "string" || !obj.title.trim()) throw new Error("Invalid title");
+  if (!Array.isArray(obj.questions)) throw new Error("questions must be an array");
+  if (obj.questions.length !== numQuestions)
+    throw new Error(`questions must have exactly ${numQuestions} items`);
+
+  const allowedIds = new Set(
+    Array.from({ length: numOptions }, (_, i) => generateOptionId(i))
+  );
+
+  obj.questions.forEach((q, idx) => {
+    if (!q || typeof q !== "object") throw new Error(`Question[${idx}] invalid`);
+    if (typeof q.id !== "string" || !q.id.trim()) throw new Error(`Question[${idx}].id invalid`);
+    if (typeof q.questionText !== "string" || !q.questionText.trim())
+      throw new Error(`Question[${idx}].questionText invalid`);
+    if (!Array.isArray(q.options)) throw new Error(`Question[${idx}].options must be array`);
+    if (q.options.length !== numOptions)
+      throw new Error(`Question[${idx}].options must have exactly ${numOptions} items`);
+    q.options.forEach((opt, oi) => {
+      if (!opt || typeof opt !== "object")
+        throw new Error(`Question[${idx}].options[${oi}] invalid`);
+      if (!allowedIds.has(opt.id))
+        throw new Error(
+          `Question[${idx}].options[${oi}].id must be one of ${[...allowedIds].join(", ")}`
+        );
+      if (typeof opt.text !== "string" || !opt.text.trim())
+        throw new Error(`Question[${idx}].options[${oi}].text invalid`);
+      if (typeof opt.explanation !== "string" || !opt.explanation.trim())
+        throw new Error(`Question[${idx}].options[${oi}].explanation invalid`);
+    });
+    if (!allowedIds.has(q.correctAnswer))
+      throw new Error(
+        `Question[${idx}].correctAnswer must be one of ${[...allowedIds].join(", ")}`
+      );
+  });
+
+  return obj;
+}
 
 exports.handler = async (event) => {
   const response = createResponse();
@@ -71,30 +214,19 @@ exports.handler = async (event) => {
           break;
         }
 
-        // For MVP: generate a deterministic, placeholder quiz structure
-        const questions = Array.from({ length: numQuestions }).map((_, qi) => {
-          const correctIndex = 0; // Always 'a' for placeholder
-          const options = Array.from({ length: numOptions }).map((__, oi) => ({
-            id: generateOptionId(oi),
-            text: oi === correctIndex ? `Correct option for Q${qi + 1}` : `Incorrect option ${oi + 1} for Q${qi + 1}`,
-            explanation:
-              oi === correctIndex
-                ? `Correct. This aligns with the topic '${topic}' at ${difficulty} level.`
-                : `Incorrect. Review the concepts in '${topic}' to understand why this is not correct.`,
-          }));
+        // Build prompt and invoke Titan to generate JSON
+        const prompt = buildPrompt({ topic, difficulty, numQuestions, numOptions });
 
-        return {
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            questionText: `(${difficulty}) [${topic}] Placeholder question ${qi + 1}?`,
-            options,
-            correctAnswer: generateOptionId(correctIndex),
-          };
-        });
-
-        const result = {
-          title: `Practice Quiz: ${topic}`,
-          questions,
-        };
+        let modelText = await invokeTitanJSON(prompt);
+        let result;
+        try {
+          result = validateResultShape(tryParseJsonStrict(modelText), { numQuestions, numOptions });
+        } catch (e1) {
+          console.warn("First parse/validation failed:", e1?.message);
+          const retryPrompt = `${prompt}\n\nIMPORTANT: Your previous response was invalid. You MUST return valid JSON only, exactly matching the schema and lengths. No extra commentary.`;
+          modelText = await invokeTitanJSON(retryPrompt);
+          result = validateResultShape(tryParseJsonStrict(modelText), { numQuestions, numOptions });
+        }
 
         response.statusCode = 200;
         response.body = JSON.stringify(result);

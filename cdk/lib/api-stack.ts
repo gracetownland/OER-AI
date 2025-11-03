@@ -1192,6 +1192,8 @@ export class ApiGatewayStack extends cdk.Stack {
         vpc: vpcStack.vpc,
         environment: {
           REGION: this.region,
+          // Default Titan model for practice material generation; can be overridden later
+          PRACTICE_MATERIAL_MODEL_ID: "amazon.titan-text-express-v1",
         },
         functionName: `${id}-practiceMaterialFunction`,
         memorySize: 512,
@@ -1208,5 +1210,17 @@ export class ApiGatewayStack extends cdk.Stack {
     const cfnLambda_practiceMaterial = lambdaPracticeMaterialFunction.node
       .defaultChild as lambda.CfnFunction;
     cfnLambda_practiceMaterial.overrideLogicalId("practiceMaterialFunction");
+
+    // Bedrock permissions for practice material generator
+    lambdaPracticeMaterialFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["bedrock:InvokeModel"],
+        resources: [
+          // Titan text express in this region
+          `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-text-express-v1`,
+        ],
+      })
+    );
   }
 }
