@@ -190,7 +190,8 @@ exports.handler = async (event) => {
           SET title = ${updateTitle}, prompt_text = ${updatePromptText}, visibility = ${updateVisibility}, 
               tags = ${updateTags}, metadata = ${updateMetadata || {}}, updated_at = NOW()
           WHERE id = ${updatePromptId}
-          RETURNING id
+          RETURNING id, title, prompt_text, owner_session_id, owner_user_id, 
+                    textbook_id, role, visibility, tags, created_at, updated_at, metadata
         `;
         
         if (updated.length === 0) {
@@ -199,16 +200,8 @@ exports.handler = async (event) => {
           break;
         }
 
-        // Fetch the updated prompt
-        const updatedPrompt = await sqlConnection`
-          SELECT 
-            id, title, prompt_text, owner_session_id, owner_user_id, 
-            textbook_id, role, visibility, tags, created_at, updated_at, metadata
-          FROM shared_user_prompts
-          WHERE id = ${updatePromptId}
-        `;
-        
-        data = updatedPrompt[0];
+        // Use the returned row directly to avoid extra SELECT
+        data = updated[0];
         response.body = JSON.stringify(data);
         break;
         

@@ -42,42 +42,58 @@ export function ModeProvider({ children }: { children: React.ReactNode }) {
     fetchCurrentRole();
   }, [sessionUuid]);
 
-  const setMode = useCallback(async (newMode: Mode) => {
-    // Update local state immediately for responsive UI
-    setModeState(newMode);
+  const setMode = useCallback(
+    async (newMode: Mode) => {
+      // Capture previous mode for rollback if backend update fails
+      const previousMode = mode;
 
-    // Update the user session role in the backend
-    if (sessionUuid) {
-      try {
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) {
-          console.error("Failed to get public token");
-          return;
-        }
-        const { token } = await tokenResponse.json();
+      // Optimistic update for responsive UI
+      setModeState(newMode);
 
-        const response = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user_sessions/${sessionUuid}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`,
-            },
-            body: JSON.stringify({ role: newMode }),
+      // Update the user session role in the backend; rollback on failure
+      if (sessionUuid) {
+        try {
+          const tokenResponse = await fetch(
+            `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
+          );
+          if (!tokenResponse.ok) {
+            console.error("Failed to get public token");
+            // Rollback local state to keep UI consistent with backend
+            setModeState(previousMode);
+            // Optional: surface error to user
+            // window.alert("Could not switch mode. Please try again.");
+            return;
           }
-        );
+          const { token } = await tokenResponse.json();
 
-        if (!response.ok) {
-          console.error("Failed to update user session role");
+          const response = await fetch(
+            `${import.meta.env.VITE_API_ENDPOINT}/user_sessions/${sessionUuid}`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ role: newMode }),
+            }
+          );
+
+          if (!response.ok) {
+            console.error("Failed to update user session role");
+            setModeState(previousMode);
+            // Optional: surface error to user
+            // window.alert("Could not switch mode. Please try again.");
+          }
+        } catch (error) {
+          console.error("Error updating user session role:", error);
+          setModeState(previousMode);
+          // Optional: surface error to user
+          // window.alert("Could not switch mode. Please try again.");
         }
-      } catch (error) {
-        console.error("Error updating user session role:", error);
       }
-    }
-  }, [sessionUuid]);
+    },
+    [sessionUuid, mode]
+  );
 
   return (
     <ModeContext.Provider value={{ mode, setMode }}>
