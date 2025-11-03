@@ -8,9 +8,9 @@ import PracticeMaterialPage from "./pages/PracticeMaterial/PracticeMaterialPage"
 
 function App() {
   return (
-    <ModeProvider>
-      <BrowserRouter>
-        <UserSessionProvider>
+    <BrowserRouter>
+      <UserSessionProvider>
+        <ModeProvider>
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/textbook/:id" element={<TextbookLayout />}>
@@ -18,9 +18,9 @@ function App() {
               <Route path="practice" element={<PracticeMaterialPage />} />
             </Route>
           </Routes>
-        </UserSessionProvider>
+        </ModeProvider>
+      </UserSessionProvider>
       </BrowserRouter>
-    </ModeProvider>
   );
 }
 

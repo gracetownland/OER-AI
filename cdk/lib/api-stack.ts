@@ -1179,5 +1179,34 @@ export class ApiGatewayStack extends cdk.Stack {
     const cfnLambda_sharedUserPrompt = lambdaSharedUserPromptFunction.node
       .defaultChild as lambda.CfnFunction;
     cfnLambda_sharedUserPrompt.overrideLogicalId("sharedUserPromptFunction");
+
+    // Practice Material Lambda (Node.js)
+    const lambdaPracticeMaterialFunction = new lambda.Function(
+      this,
+      `${id}-practiceMaterialFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        code: lambda.Code.fromAsset("lambda"),
+        handler: "handlers/practiceMaterialHandler.handler",
+        timeout: Duration.seconds(120),
+        vpc: vpcStack.vpc,
+        environment: {
+          REGION: this.region,
+        },
+        functionName: `${id}-practiceMaterialFunction`,
+        memorySize: 512,
+        role: lambdaRole,
+      }
+    );
+
+    lambdaPracticeMaterialFunction.addPermission("AllowApiGatewayInvoke", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks/*/practice_materials*`,
+    });
+
+    const cfnLambda_practiceMaterial = lambdaPracticeMaterialFunction.node
+      .defaultChild as lambda.CfnFunction;
+    cfnLambda_practiceMaterial.overrideLogicalId("practiceMaterialFunction");
   }
 }
