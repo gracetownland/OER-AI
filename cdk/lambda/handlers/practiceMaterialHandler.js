@@ -30,6 +30,9 @@ function generateOptionId(index) {
   return String.fromCharCode(97 + index);
 }
 
+// Clamp helper to bound numeric inputs
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
 exports.handler = async (event) => {
   const response = createResponse();
   try {
@@ -44,12 +47,17 @@ exports.handler = async (event) => {
           break;
         }
 
-        const body = parseBody(event.body);
-        const topic = (body.topic || "").toString().trim();
-        const materialType = (body.material_type || "mcq").toString();
-        const numQuestions = Math.min(Math.max(parseInt(body.num_questions) || 5, 1), 20);
-        const numOptions = Math.min(Math.max(parseInt(body.num_options) || 4, 2), 6);
-        const difficulty = (body.difficulty || "intermediate").toString();
+  const body = parseBody(event.body);
+  const topic = String(body?.topic ?? "").trim();
+  const materialType = String(body?.material_type ?? "mcq").trim().toLowerCase();
+
+  const numQuestionsParsed = Number.parseInt(String(body?.num_questions ?? ""), 10);
+  const numQuestions = clamp(Number.isNaN(numQuestionsParsed) ? 5 : numQuestionsParsed, 1, 20);
+
+  const numOptionsParsed = Number.parseInt(String(body?.num_options ?? ""), 10);
+  const numOptions = clamp(Number.isNaN(numOptionsParsed) ? 4 : numOptionsParsed, 2, 6);
+
+  const difficulty = String(body?.difficulty ?? "intermediate").trim().toLowerCase();
 
         if (!topic) {
           response.statusCode = 400;
