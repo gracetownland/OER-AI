@@ -62,6 +62,7 @@ def get_bedrock_llm(
             model_kwargs = {
                 "temperature": temperature,
                 "max_completion_tokens": 4096
+                "stream": True
             }
         elif "llama" in bedrock_llm_id.lower():
             logger.info("Using llama-specific parameters")
