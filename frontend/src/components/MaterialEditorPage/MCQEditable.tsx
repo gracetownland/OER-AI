@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { IH5PQuestion } from "@/types/MaterialEditor";
 import { Separator } from "../ui/separator";
 import { Label } from "../ui/label";
+import { CheckCircle, XCircle } from "lucide-react";
 
 interface MCQEditableProps {
   question: IH5PQuestion;
@@ -16,6 +18,12 @@ export function MCQEditable({
   questionNumber,
   onUpdate,
 }: MCQEditableProps) {
+  const [correctAnswerIndex, setCorrectAnswerIndex] = useState<number | null>(null);
+  
+  useEffect(() => {
+    setCorrectAnswerIndex(question.params.answers.findIndex((answer) => answer.correct));
+  }, [question.params.answers]);
+
   const handleQuestionChange = (newText: string) => {
     onUpdate({
       ...question,
@@ -63,6 +71,32 @@ export function MCQEditable({
     });
   };
 
+  const handleCorrectToggle = (index: number) => {
+    const newAnswers = question.params.answers;
+    // remove old correct answer
+    if (correctAnswerIndex !== null && correctAnswerIndex !== index) {
+      newAnswers[correctAnswerIndex] = {
+        ...newAnswers[correctAnswerIndex],
+        correct: false,
+      };
+    }
+
+    // set new correct value
+    newAnswers[index] = {
+      ...newAnswers[index],
+      correct: true,
+    };
+
+    setCorrectAnswerIndex(index);
+    onUpdate({
+      ...question,
+      params: {
+        ...question.params,
+        answers: newAnswers,
+      },
+    });
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -81,8 +115,16 @@ export function MCQEditable({
         {/* Answer Options */}
         {question.params.answers.map((answer, index) => (
           <>
-            <Label className="text-xs font-normal text-muted-foreground">
-              Answer
+            <Label
+              className="cursor-pointer text-sm font-normal text-muted-foreground"
+              onClick={() => handleCorrectToggle(index)}
+            >
+              {answer.correct ? (
+                <CheckCircle className="h-4 w-4 text-green-600"></CheckCircle>
+              ) : (
+                <XCircle className="h-4 w-4 text-red-600"></XCircle>
+              )}
+              {answer.correct ? " Correct Answer" : " Incorrect Answer"}
             </Label>
             <div key={index} className="flex flex-col items-start mt-1">
               <div className="flex-1 w-full">
