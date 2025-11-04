@@ -6,6 +6,7 @@ import type { IH5PQuestion } from "@/types/MaterialEditor";
 import { Separator } from "../ui/separator";
 import { Label } from "../ui/label";
 import { CheckCircle, XCircle } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface MCQEditableProps {
   question: IH5PQuestion;
@@ -18,10 +19,14 @@ export function MCQEditable({
   questionNumber,
   onUpdate,
 }: MCQEditableProps) {
-  const [correctAnswerIndex, setCorrectAnswerIndex] = useState<number | null>(null);
-  
+  const [correctAnswerIndex, setCorrectAnswerIndex] = useState<number | null>(
+    null
+  );
+
   useEffect(() => {
-    setCorrectAnswerIndex(question.params.answers.findIndex((answer) => answer.correct));
+    setCorrectAnswerIndex(
+      question.params.answers.findIndex((answer) => answer.correct)
+    );
   }, [question.params.answers]);
 
   const handleQuestionChange = (newText: string) => {
@@ -116,7 +121,11 @@ export function MCQEditable({
         {question.params.answers.map((answer, index) => (
           <>
             <Label
-              className="cursor-pointer text-sm font-normal text-muted-foreground"
+              className={cn(
+                `${
+                  index !== correctAnswerIndex && "cursor-pointer"
+                } text-sm font-normal text-muted-foreground`
+              )}
               onClick={() => handleCorrectToggle(index)}
             >
               {answer.correct ? (
