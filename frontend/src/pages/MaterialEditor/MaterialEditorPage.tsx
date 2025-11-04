@@ -101,6 +101,8 @@ export default function MaterialEditorPage() {
   const handleGenerate = (formData: unknown) => {
     console.log("Generate form data:", formData);
     // TODO: Call API to generate new question set
+
+    setQuestionSets((prev) => [...prev, dummyQuestionSet]);
   };
 
   const handleExportQuestionSet = (questionSet: IH5PMinimalQuestionSet) => {

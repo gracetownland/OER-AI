@@ -72,7 +72,7 @@ export function MCQEditableContainer({
   return (
     <Card>
       <CardHeader
-        className="cursor-pointer hover:bg-muted/50 transition-colors py-4"
+        className="cursor-pointer hover:bg-muted/50 transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center justify-between">
