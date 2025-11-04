@@ -17,9 +17,6 @@ export function MCQEditable({
   onUpdate,
 }: MCQEditableProps) {
   const [isEditingQuestion, setIsEditingQuestion] = useState(false);
-  const [editingAnswerIndex, setEditingAnswerIndex] = useState<number | null>(
-    null
-  );
 
   const handleQuestionChange = (newText: string) => {
     onUpdate({
@@ -74,22 +71,13 @@ export function MCQEditable({
         <CardTitle className="text-lg font-semibold mb-2">
           Question {questionNumber}
         </CardTitle>
-        {isEditingQuestion ? (
           <Textarea
             value={question.params.question}
             onChange={(e) => handleQuestionChange(e.target.value)}
             onBlur={() => setIsEditingQuestion(false)}
             autoFocus
-            className="text-sm"
+            className="text-sm py-1 border-text-muted-foreground min-h-fit"
           />
-        ) : (
-          <div
-            onClick={() => setIsEditingQuestion(true)}
-            className="text-muted-foreground text-sm cursor-pointer hover:bg-muted rounded"
-          >
-            {question.params.question}
-          </div>
-        )}
       </CardHeader>
 
       <CardContent>
@@ -97,24 +85,11 @@ export function MCQEditable({
         {question.params.answers.map((answer, index) => (
           <div key={index} className="flex flex-col items-start gap-2">
               <div className="flex-1 w-full">
-                {editingAnswerIndex === index ? (
-                  <Input
-                    value={answer.text}
-                    onChange={(e) =>
-                      handleAnswerTextChange(index, e.target.value)
-                    }
-                    onBlur={() => setEditingAnswerIndex(null)}
-                    autoFocus
-                    className="text-sm"
-                  />
-                ) : (
-                  <div
-                    onClick={() => setEditingAnswerIndex(index)}
-                    className="text-sm p-2 cursor-pointer hover:bg-muted rounded border"
-                  >
-                    {answer.text}
-                  </div>
-                )}
+                <Input
+                  value={answer.text}
+                  onChange={(e) => handleAnswerTextChange(index, e.target.value)}
+                  className="text-sm"
+                />
 
                 {/* Feedback fields */}
                 <div className="mt-2 space-y-2 pl-2 border-l-2 border-muted">
