@@ -80,7 +80,7 @@ export default function SideBar({
           <Button
             variant={"link"}
             onClick={() => {
-              navigate(`/textbook/${textbookId}/practice`);
+              navigate(`/textbook/${textbookId}/material-editor`);
               setMobileOpen(false);
             }}
             className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${
