@@ -722,3 +722,98 @@ def split_into_sentences(paragraph: str) -> list[str]:
     sentences = re.split(sentence_endings, paragraph)
     return sentences
 
+def update_session_name(table_name: str, session_id: str, bedrock_llm_id: str, db_connection=None) -> str:
+    """Generate session name from first exchange and update database."""
+    
+    dynamodb_client = boto3.client("dynamodb")
+    
+    try:
+        # First check if session name has already been updated
+        if db_connection:
+            try:
+                with db_connection.cursor() as cur:
+                    cur.execute(
+                        'SELECT name FROM chat_sessions WHERE id = %s',
+                        (session_id,)
+                    )
+                    row = cur.fetchone()
+                    if row and row[0] and row[0] != "New Chat Session":
+                        # Session name already customized, don't update
+                        return row[0]
+            except Exception as db_error:
+                print(f"Error checking existing session name: {db_error}")
+                # Continue with name generation if check fails
+        
+        response = dynamodb_client.get_item(
+            TableName=table_name,
+            Key={'SessionId': {'S': session_id}}
+        )
+        
+        history = response.get('Item', {}).get('History', {}).get('L', [])
+        
+        if len(history) < 2:
+            return None
+            
+        # Just use first human and AI messages
+        human_msg = None
+        ai_msg = None
+        
+        for item in history:
+            msg_type = item.get('M', {}).get('type', {}).get('S')
+            content = item.get('M', {}).get('data', {}).get('M', {}).get('content', {}).get('S', '')
+            
+            if msg_type == 'human' and not human_msg:
+                human_msg = content
+            elif msg_type == 'ai' and not ai_msg:
+                ai_msg = content
+                
+            if human_msg and ai_msg:
+                break
+        
+        if not human_msg or not ai_msg:
+            return None
+            
+        # Generate simple name
+        
+        llm = BedrockLLM(model_id=bedrock_llm_id)
+        title_system_prompt = """
+            You are given the first message from an AI and the first message from a student in a conversation. 
+            Based on these two messages, come up with a name that describes the conversation. 
+            The name should be less than 30 characters. ONLY OUTPUT THE NAME YOU GENERATED. NO OTHER TEXT.
+        """
+        prompt = f"""
+        <|begin_of_text|>
+        <|start_header_id|>system<|end_header_id|>
+        {title_system_prompt}
+        <|eot_id|>
+        <|start_header_id|>AI Message<|end_header_id|>
+        {ai_msg}
+        <|eot_id|>
+        <|start_header_id|>Student Message<|end_header_id|>
+        {human_msg}
+        <|eot_id|>
+        <|start_header_id|>assistant<|end_header_id|>
+    """
+        
+        session_name = llm.invoke(prompt)
+        
+        # Update the database with the generated session name
+        if db_connection and session_name:
+            try:
+                with db_connection.cursor() as cur:
+                    cur.execute(
+                        'UPDATE chat_sessions SET name = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s',
+                        (session_name, session_id)
+                    )
+                db_connection.commit()
+                print(f"Successfully updated session name in database: {session_name}")
+            except Exception as db_error:
+                db_connection.rollback()
+                print(f"Error updating session name in database: {db_error}")
+                # Continue and return the generated name even if DB update fails
+        
+        return session_name
+        
+    except Exception as e:
+        print(f"Error updating session name: {e}")
+        return None
