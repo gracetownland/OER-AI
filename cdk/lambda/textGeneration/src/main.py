@@ -135,7 +135,9 @@ def process_query_streaming(query, textbook_id, retriever, chat_session_id, webs
             connection=connection,
             guardrail_id=GUARDRAIL_ID,
             websocket_endpoint=websocket_endpoint,
-            connection_id=connection_id
+            connection_id=connection_id,
+            table_name=TABLE_NAME_PARAM,
+            bedrock_llm_id=BEDROCK_LLM_ID
         )
     except Exception as e:
         logger.error(f"Error in process_query_streaming: {str(e)}", exc_info=True)
@@ -367,8 +369,9 @@ def handler(event, context):
             connection.commit()
             logger.info(f"Logged question for textbook {textbook_id}")
             
-            # Update session name if this is a chat session
-            if chat_session_id and TABLE_NAME_PARAM:
+            # Update session name if this is a chat session (only for non-WebSocket requests)
+            session_name = None
+            if chat_session_id and TABLE_NAME_PARAM and not is_websocket:
                 try:
                     session_name = update_session_name(
                         table_name=TABLE_NAME_PARAM,
@@ -405,7 +408,7 @@ def handler(event, context):
                 "textbook_id": textbook_id,
                 "response": response_data["response"],
                 "sources": response_data["sources_used"],
-                "session_name":  session_name if chat_session_id and TABLE_NAME_PARAM else None
+                "session_name": session_name if not is_websocket else response_data.get("session_name")
             })
         }
         

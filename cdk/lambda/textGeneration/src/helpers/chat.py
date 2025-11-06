@@ -365,7 +365,9 @@ def get_response_streaming(
     connection=None,
     guardrail_id: str = None,
     websocket_endpoint: str = None,
-    connection_id: str = None
+    connection_id: str = None,
+    table_name: str = None,
+    bedrock_llm_id: str = None
 ) -> dict:
     """
     Generate a streaming response to a query using the provided retriever and LLM with chat history support.
@@ -381,9 +383,11 @@ def get_response_streaming(
         guardrail_id: Optional guardrail ID for content filtering
         websocket_endpoint: WebSocket API endpoint URL
         connection_id: WebSocket connection ID for sending messages
+        table_name: DynamoDB table name for chat history (for session name generation)
+        bedrock_llm_id: Bedrock LLM model ID (for session name generation)
         
     Returns:
-        A dictionary containing the response and sources_used
+        A dictionary containing the response, sources_used, and optionally session_name
     """
     import boto3
     
@@ -536,14 +540,36 @@ def get_response_streaming(
             full_response, guardrail_assessments = _apply_output_guardrails(full_response, guardrail_id, guardrail_assessments)
             # Note: WebSocket correction message would need to be sent here if response was modified
         
-        # Send completion message with sources
+        # Generate session name if parameters are provided
+        session_name = None
+        if chat_session_id and table_name and bedrock_llm_id and connection:
+            try:
+                session_name = update_session_name(
+                    table_name=table_name,
+                    session_id=chat_session_id,
+                    bedrock_llm_id=bedrock_llm_id,
+                    db_connection=connection
+                )
+                if session_name:
+                    logger.info(f"Generated session name: {session_name}")
+                else:
+                    logger.info("Session name not generated (may already exist or insufficient history)")
+            except Exception as name_error:
+                logger.error(f"Error generating session name: {name_error}")
+                # Don't fail the request if session name generation fails
+        
+        # Send completion message with sources and session name
+        completion_data = {
+            "type": "complete",
+            "sources": sources_used
+        }
+        if session_name:
+            completion_data["session_name"] = session_name
+            
         try:
             apigatewaymanagementapi.post_to_connection(
                 ConnectionId=connection_id,
-                Data=json.dumps({
-                    "type": "complete",
-                    "sources": sources_used
-                })
+                Data=json.dumps(completion_data)
             )
         except Exception:
             logger.warning("WebSocket connection closed during completion")
@@ -557,6 +583,10 @@ def get_response_streaming(
             "response": full_response,
             "sources_used": sources_used,
         }
+        
+        # Include session name if generated
+        if session_name:
+            result_dict["session_name"] = session_name
         
         # Include guardrail assessments if they exist
         if guardrail_assessments:
