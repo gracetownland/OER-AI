@@ -5,7 +5,7 @@ import logging
 import psycopg2
 from langchain_aws import BedrockEmbeddings
 from helpers.vectorstore import get_textbook_retriever
-from helpers.chat import get_bedrock_llm, get_response_streaming, get_response
+from helpers.chat import get_bedrock_llm, get_response_streaming, get_response, update_session_name
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
@@ -20,6 +20,7 @@ EMBEDDING_MODEL_PARAM = os.environ.get("EMBEDDING_MODEL_PARAM")
 BEDROCK_REGION_PARAM = os.environ.get("BEDROCK_REGION_PARAM")
 GUARDRAIL_ID_PARAM = os.environ.get("GUARDRAIL_ID_PARAM")
 WEBSOCKET_API_ENDPOINT = os.environ.get("WEBSOCKET_API_ENDPOINT", "")
+TABLE_NAME_PARAM = os.environ.get("TABLE_NAME_PARAM")
 # AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
@@ -134,7 +135,9 @@ def process_query_streaming(query, textbook_id, retriever, chat_session_id, webs
             connection=connection,
             guardrail_id=GUARDRAIL_ID,
             websocket_endpoint=websocket_endpoint,
-            connection_id=connection_id
+            connection_id=connection_id,
+            table_name=TABLE_NAME_PARAM,
+            bedrock_llm_id=BEDROCK_LLM_ID
         )
     except Exception as e:
         logger.error(f"Error in process_query_streaming: {str(e)}", exc_info=True)
@@ -365,6 +368,25 @@ def handler(event, context):
             
             connection.commit()
             logger.info(f"Logged question for textbook {textbook_id}")
+            
+            # Update session name if this is a chat session (only for non-WebSocket requests)
+            session_name = None
+            if chat_session_id and TABLE_NAME_PARAM and not is_websocket:
+                try:
+                    session_name = update_session_name(
+                        table_name=TABLE_NAME_PARAM,
+                        session_id=chat_session_id,
+                        bedrock_llm_id=BEDROCK_LLM_ID,
+                        db_connection=connection
+                    )
+                    if session_name:
+                        logger.info(f"Updated session name to: {session_name}")
+                    else:
+                        logger.info("Session name not updated (may already exist or insufficient history)")
+                except Exception as name_error:
+                    logger.error(f"Error updating session name: {name_error}")
+                    # Don't fail the request if session name update fails
+            
         except Exception as db_error:
             connection.rollback()
             logger.error(f"Error logging question: {db_error}")
@@ -385,7 +407,8 @@ def handler(event, context):
             "body": json.dumps({
                 "textbook_id": textbook_id,
                 "response": response_data["response"],
-                "sources": response_data["sources_used"]
+                "sources": response_data["sources_used"],
+                "session_name": session_name if not is_websocket else response_data.get("session_name")
             })
         }
         
