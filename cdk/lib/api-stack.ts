@@ -1367,7 +1367,7 @@ export class ApiGatewayStack extends cdk.Stack {
         memorySize: 1024,
         timeout: cdk.Duration.seconds(120),
         vpc: vpcStack.vpc,
-        functionName: `${id}-PracticeMaterialLambdaDockerFunction`,
+        functionName: `${id}-PracticeMaterialDockerFunc`,
         environment: {
           REGION: this.region,
           // DB + RDS for embeddings access
@@ -1389,10 +1389,10 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks/*/practice_materials*`,
     });
 
-    // Logical ID override
+    // Logical ID override - USE NEW ID to force CloudFormation to replace old ZIP function
     const cfnPracticeMaterialDocker = practiceMaterialDockerFunc.node
       .defaultChild as lambda.CfnFunction;
-    cfnPracticeMaterialDocker.overrideLogicalId("practiceMaterialFunction");
+    cfnPracticeMaterialDocker.overrideLogicalId("PracticeMaterialDockerFunc");
 
     // IAM: Secrets, SSM, Bedrock
     practiceMaterialDockerFunc.addToRolePolicy(
