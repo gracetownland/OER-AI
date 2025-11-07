@@ -192,8 +192,8 @@ exports.handler = async (event) => {
         break;
         
       case "GET /prompt_templates/{prompt_template_id}/questions":
-        const templateId = event.pathParameters?.prompt_template_id;
-        if (!templateId) {
+        const questionsTemplateId = event.pathParameters?.prompt_template_id;
+        if (!questionsTemplateId) {
           response.statusCode = 400;
           response.body = JSON.stringify({ error: "Template ID is required" });
           break;
@@ -202,7 +202,7 @@ exports.handler = async (event) => {
         const questions = await sqlConnection`
           SELECT id, question_text, order_index, created_at
           FROM guided_prompt_questions
-          WHERE prompt_template_id = ${templateId}
+          WHERE prompt_template_id = ${questionsTemplateId}
           ORDER BY order_index ASC
         `;
         
