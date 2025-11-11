@@ -3,6 +3,7 @@ import { MCQEditableContainer } from "@/components/MaterialEditorPage/MCQEditabl
 import type { IH5PMinimalQuestionSet } from "@/types/MaterialEditor";
 import { Card, CardDescription } from "@/components/ui/card";
 import { MaterialEditorForm } from "@/components/MaterialEditorPage/MaterialEditorForm";
+import { useTextbookView } from "@/providers/textbookView";
 
 // Dummy H5P question set data
 const dummyQuestionSet: IH5PMinimalQuestionSet = {
@@ -91,6 +92,7 @@ const dummyQuestionSet: IH5PMinimalQuestionSet = {
 
 export default function MaterialEditorPage() {
   const [questionSets, setQuestionSets] = useState<IH5PMinimalQuestionSet[]>([dummyQuestionSet]);
+  const { textbook } = useTextbookView();
 
 
   const handleQuizDelete = (index: number) => {
@@ -103,11 +105,6 @@ export default function MaterialEditorPage() {
     // TODO: Call API to generate new question set
 
     setQuestionSets((prev) => [...prev, dummyQuestionSet]);
-  };
-
-  const handleExportToH5P = (questionSet: IH5PMinimalQuestionSet) => {
-    console.log("Exporting question set:", questionSet);
-    // TODO: call api to export question as h5p
   };
 
   return (
@@ -131,8 +128,8 @@ export default function MaterialEditorPage() {
               <MCQEditableContainer
                 key={index}
                 initialQuestionSet={questionSet}
-                exportToH5P={handleExportToH5P}
                 onDelete={() => {handleQuizDelete(index)}}
+                textbookId={textbook?.id}
               />
             ))
           )}

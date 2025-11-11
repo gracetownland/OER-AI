@@ -1139,6 +1139,31 @@ export class ApiGatewayStack extends cdk.Stack {
       .defaultChild as lambda.CfnFunction;
     cfnLambda_faq.overrideLogicalId("faqFunction");
 
+    // H5P Export Lambda Function
+    const lambdaH5pExportFunction = new lambda.Function(
+      this,
+      `${id}-h5pExportFunction`,
+      {
+        runtime: lambda.Runtime.PYTHON_3_11,
+        code: lambda.Code.fromAsset("lambda/h5pExport"),
+        handler: "index.handler",
+        timeout: Duration.seconds(30),
+        memorySize: 512,
+        functionName: `${id}-h5pExportFunction`,
+        role: lambdaRole,
+      }
+    );
+
+    lambdaH5pExportFunction.addPermission("AllowApiGatewayInvoke", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks/*/practice_materials/export-h5p`,
+    });
+
+    const cfnLambda_h5pExport = lambdaH5pExportFunction.node
+      .defaultChild as lambda.CfnFunction;
+    cfnLambda_h5pExport.overrideLogicalId("h5pExportFunction");
+
     const lambdaChatSessionFunction = new lambda.Function(
       this,
       `${id}-chatSessionFunction`,
