@@ -80,8 +80,11 @@ def create_h5p_package(questions, title):
     content_dir.mkdir(parents=True, exist_ok=True)
     
     try:
+        # Determine if single or multiple questions
+        use_question_set = len(questions) > 1
+        
         # Build content.json
-        if len(questions) == 1:
+        if not use_question_set:
             # Single question format
             q = questions[0]
             content_data = {
@@ -123,44 +126,44 @@ def create_h5p_package(questions, title):
             json.dump(content_data, f, indent=2)
         
         # Build h5p.json (metadata)
+        main_library = "H5P.MultiChoice" if not use_question_set else "H5P.QuestionSet"
+        
+        # Build dependency list
+        dependencies = [
+            {
+                "machineName": "H5P.MultiChoice",
+                "majorVersion": 1,
+                "minorVersion": 16
+            }
+        ]
+        
+        # Add QuestionSet dependencies if needed
+        if use_question_set:
+            dependencies.insert(0, {
+                "machineName": "H5P.QuestionSet",
+                "majorVersion": 1,
+                "minorVersion": 17
+            })
+        
         h5p_data = {
             "title": title,
             "language": "en",
-            "mainLibrary": "H5P.MultiChoice" if len(questions) == 1 else "H5P.QuestionSet",
+            "mainLibrary": main_library,
             "embedTypes": ["div"],
             "license": "CC BY",
             "authors": [{"name": "OER-AI Assistant", "role": "Author"}],
-            "preloadedDependencies": [
-                {
-                    "machineName": "H5P.MultiChoice",
-                    "majorVersion": 1,
-                    "minorVersion": 16
-                }
-            ]
+            "preloadedDependencies": dependencies
         }
         with open(work_dir / "h5p.json", "w") as f:
             json.dump(h5p_data, f, indent=2)
         
-        # Build library.json
-        library_data = {
-            "machineName": "H5P.MultiChoice",
-            "title": "Multiple Choice",
-            "majorVersion": 1,
-            "minorVersion": 16,
-            "patchVersion": 0,
-            "runnable": 1
-        }
-        with open(work_dir / "library.json", "w") as f:
-            json.dump(library_data, f, indent=2)
-        
-        # Create ZIP file in memory
+        # Create ZIP file in memory (DO NOT include library.json - it's not needed at root)
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as h5p_zip:
-            for root, _, files in os.walk(work_dir):
-                for file in files:
-                    full_path = os.path.join(root, file)
-                    arcname = os.path.relpath(full_path, work_dir)
-                    h5p_zip.write(full_path, arcname)
+            # Add h5p.json
+            h5p_zip.write(work_dir / "h5p.json", "h5p.json")
+            # Add content/content.json
+            h5p_zip.write(content_dir / "content.json", "content/content.json")
         
         # Get bytes
         h5p_bytes = zip_buffer.getvalue()
