@@ -1485,10 +1485,8 @@ export class ApiGatewayStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ["bedrock:InvokeModel"],
         resources: [
-          // Nova Pro inference profile (for text generation)
-          `arn:aws:bedrock:us-east-1:784303385514:inference-profile/us.amazon.nova-pro-v1:0`,
-          // Nova Pro foundation model
-          `arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-pro-v1:0`,
+          // Llama 3 model (for practice material generation)
+          `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,
           // Titan embeddings model (for retrieval)
           `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
         ],
