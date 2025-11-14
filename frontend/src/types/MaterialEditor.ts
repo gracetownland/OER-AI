@@ -1,4 +1,45 @@
 /**
+ * Defines the options, points, and feedback for a single keyword.
+ * This is nested inside IH5PEssayKeyword, matching the "options" group.
+ */
+export interface IH5PEssayKeywordOptions {
+  points: number;
+  occurrences: number;
+  caseSensitive: boolean;
+  forgiveMistakes: boolean;
+  feedbackIncluded?: string;
+  feedbackMissed?: string;
+
+  // Optional select fields from semantics
+  feedbackIncludedWord?: "keyword" | "alternative" | "answer" | "none";
+  feedbackMissedWord?: "keyword" | "none";
+}
+
+/**
+ * Defines a single keyword object.
+ * This corresponds to the "groupy" object in the semantics list.
+ */
+export interface IH5PEssayKeyword {
+  keyword: string;
+  alternatives?: string[]; // Optional list, min: 0
+  options: IH5PEssayKeywordOptions;
+}
+
+/**
+ * This is the core "params" object for an H5P.Essay question.
+ * This is a MINIMAL version based on your request,
+ * containing only the required fields.
+ */
+export interface IH5PEssayParams {
+  taskDescription: string;
+  keywords: IH5PEssayKeyword[]; // Required list, min: 1
+  // All optional fields like media, solution, placeholder,
+  // and behaviour have been removed as requested.
+}
+
+
+
+/**
  * Defines the optional feedback and tips for a single answer.
  * This is nested inside IH5PAnswerOption.
  */
@@ -30,10 +71,16 @@ export interface IH5PMultiChoiceParams {
  * This is the structure for one question *within* an H5P.QuestionSet (Quiz).
  * It requires the library name and the core parameters object.
  */
-export interface IH5PQuestion {
+export interface I5HPMultiChoiceQuestion {
   /** * The H5P library type, e.g., "H5P.MultiChoice 1.17". */
   library: string;
   params: IH5PMultiChoiceParams;
+}
+
+export interface I5HPEssayQuestion {
+  /** * The H5P library type, e.g., "H5P.Essay 1.3". */
+  library: string;
+  params: IH5PEssayParams;
 }
 
 /**
@@ -42,5 +89,5 @@ export interface IH5PQuestion {
  */
 export interface IH5PMinimalQuestionSet {
   /** * The list of questions. */
-  questions: IH5PQuestion[];
+  questions: I5HPMultiChoiceQuestion[] | I5HPEssayQuestion[];
 }

@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { MCQEditable } from "./MCQEditable";
-import type { IH5PMinimalQuestionSet, IH5PQuestion } from "@/types/MaterialEditor";
+import type { IH5PMinimalQuestionSet, I5HPMultiChoiceQuestion } from "@/types/MaterialEditor";
 import { ChevronDown, ChevronUp, Download, Plus, Trash2 } from "lucide-react";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
 
@@ -23,14 +23,14 @@ export function MCQEditableContainer({
   const [title, setTitle] = useState("Untitled Quiz");
   const [exportFormat, setExportFormat] = useState<string>("json");
 
-  const handleQuestionUpdate = (index: number, updatedQuestion: IH5PQuestion) => {
+  const handleQuestionUpdate = (index: number, updatedQuestion: I5HPMultiChoiceQuestion) => {
     const newQuestions = [...questionSet.questions];
     newQuestions[index] = updatedQuestion;
     setQuestionSet({ questions: newQuestions });
   };
 
   const handleAddQuestion = () => {
-    const newQuestion: IH5PQuestion = {
+    const newQuestion: I5HPMultiChoiceQuestion = {
       library: "H5P.MultiChoice 1.17",
       params: {
         question: "New question?",
