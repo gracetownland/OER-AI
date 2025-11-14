@@ -251,7 +251,24 @@ def handler(event, context):
             logger.info("Retrying with enhanced prompt")
             response2 = _llm.invoke(retry_prompt)
             output_text2 = response2.content
-            result = validate_shape(extract_json(output_text2), num_questions, num_options)
+            try:
+                result = validate_shape(extract_json(output_text2), num_questions, num_options)
+            except Exception as e2:
+                logger.warning(f"Second parse/validation failed: {e2}")
+                return {
+                    "statusCode": 500,
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "*",
+                    },
+                    "body": json.dumps({
+                        "error": "Practice material generation failed after two attempts.",
+                        "first_error": str(e1),
+                        "second_error": str(e2),
+                    }),
+                }
 
         return {
             "statusCode": 200,
