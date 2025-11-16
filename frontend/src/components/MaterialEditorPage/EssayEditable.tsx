@@ -7,6 +7,7 @@ import { Separator } from "../ui/separator";
 import { Label } from "../ui/label";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2 } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface EssayEditableProps {
   question: I5HPEssayQuestion;
@@ -368,6 +369,29 @@ export function EssayEditable({
                   />
                 </div>
 
+                {/* Feedback Included Word */}
+                <div>
+                  <Label className="text-xs font-normal text-muted-foreground">
+                    Feedback Included Word Type
+                  </Label>
+                  <Select
+                    value={keyword.options.feedbackIncludedWord}
+                    onValueChange={(value) =>
+                      handleKeywordOptionChange(index, "feedbackIncludedWord", value)
+                    }
+                  >
+                    <SelectTrigger className="border-text-muted-foreground text-xs mt-1">
+                      <SelectValue placeholder="Select word type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="keyword">Keyword</SelectItem>
+                      <SelectItem value="alternative">Alternative</SelectItem>
+                      <SelectItem value="answer">Answer</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Feedback Missed */}
                 <div>
                   <Label className="text-xs font-normal text-muted-foreground">
@@ -381,6 +405,27 @@ export function EssayEditable({
                     placeholder="Feedback when keyword is missing"
                     className="text-xs mt-1"
                   />
+                </div>
+
+                {/* Feedback Missed Word */}
+                <div>
+                  <Label className="text-xs font-normal text-muted-foreground">
+                    Feedback Missed Word Type
+                  </Label>
+                  <Select
+                    value={keyword.options.feedbackMissedWord}
+                    onValueChange={(value) =>
+                      handleKeywordOptionChange(index, "feedbackMissedWord", value)
+                    }
+                  >
+                    <SelectTrigger className="border-text-muted-foreground text-xs mt-1">
+                      <SelectValue placeholder="Select word type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="keyword">Keyword</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             )}

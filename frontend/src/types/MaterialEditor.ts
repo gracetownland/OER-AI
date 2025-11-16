@@ -9,10 +9,8 @@ export interface IH5PEssayKeywordOptions {
   forgiveMistakes: boolean;
   feedbackIncluded?: string;
   feedbackMissed?: string;
-
-  // Optional select fields from semantics
-  feedbackIncludedWord?: "keyword" | "alternative" | "answer" | "none";
-  feedbackMissedWord?: "keyword" | "none";
+  feedbackIncludedWord: "keyword" | "alternative" | "answer" | "none";
+  feedbackMissedWord: "keyword" | "none";
 }
 
 /**
