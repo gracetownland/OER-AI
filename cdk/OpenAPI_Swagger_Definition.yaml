@@ -1801,6 +1801,73 @@ paths:
         httpMethod: POST
         type: aws_proxy
 
+  /faq/{faq_id}/report:
+    <<: *commonOptions
+    post:
+      tags:
+        - User
+      summary: Report an FAQ entry as inaccurate or inappropriate
+      operationId: report_faq
+      security:
+        - userAuthorizer: []
+      parameters:
+        - name: faq_id
+          in: path
+          required: true
+          description: FAQ entry UUID
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  enum: [inaccurate, inappropriate, outdated, other]
+                  description: Reason for reporting the FAQ
+                comment:
+                  type: string
+                  description: Optional additional comment
+      responses:
+        "200":
+          description: FAQ reported successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  faq_id:
+                    type: string
+                    format: uuid
+                  reported_at:
+                    type: string
+                    format: date-time
+                  reason:
+                    type: string
+                  message:
+                    type: string
+        "400":
+          description: Invalid request
+        "404":
+          description: FAQ entry not found
+        "401":
+          description: Unauthorized
+        "500":
+          description: Internal Server Error
+      x-amazon-apigateway-integration:
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${faqFunction.Arn}/invocations
+        passthroughBehavior: "when_no_match"
+        httpMethod: POST
+        type: aws_proxy
+
   /textbooks/{textbook_id}/chat_sessions:
     <<: *commonOptions
     get:
