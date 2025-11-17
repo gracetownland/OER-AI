@@ -233,6 +233,7 @@ export class DataPipelineStack extends cdk.Stack {
 
     // Create S3 bucket for Glue scripts and custom modules
     this.glueBucket = new s3.Bucket(this, `${id}-glue-bucket`, {
+      bucketName: `${id.toLowerCase()}-glue-processing-bucket`,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
@@ -301,18 +302,33 @@ export class DataPipelineStack extends cdk.Stack {
               ],
               resources: ["arn:aws:logs:*:*:*"],
             }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ["secretsmanager:GetSecretValue"],
+              resources: [
+                `arn:aws:secretsmanager:${this.region}:${this.account}:secret:*`,
+              ],
+            }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              actions: ["bedrock:InvokeModel"],
+              resources: [
+                `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+              ],
+            }),
           ],
         }),
       },
     });
 
     const PYTHON_VER = "3.9";
-    const GLUE_VER = "4.0";
+    const GLUE_VER = "5.0";
     const MAX_CONCURRENT_RUNS = 1;
     const MAX_RETRIES = 0;
     const MAX_CAPACITY = 1;
     const TIMEOUT = 2880;
-    const PYTHON_LIBS = "scrapy";//boto3,botocore,langchain,langchain-aws,langchain-core,langchain-experimental,langchain-postgres,psycopg[binary,pool],psycopg2";
+    const PYTHON_LIBS =
+      "scrapy,requests,beautifulsoup4,lxml,urllib3,pandas,psycopg2-binary,langchain-text-splitters,langchain-aws,langchain-postgres,langchain-core";
 
     // Glue Job for data processing
     const dataProcessingJob = new glue.CfnJob(this, "DataProcessingJob", {
@@ -330,8 +346,10 @@ export class DataPipelineStack extends cdk.Stack {
         "--enable-continuous-cloudwatch-log": "true",
         "--library-set": "analytics",
         "--CSV_BUCKET": this.csvBucket.bucketName,
+        "--GLUE_BUCKET": this.glueBucket.bucketName,
         "--region_name": this.region,
         "--rds_secret": databaseStack.secretPathAdminName,
+        "--rds_proxy_endpoint": databaseStack.rdsProxyEndpoint,
         // Processing configuration
         "--pipeline_mode": "full_update", // or "incremental" for delta processing
         "--batch_id": "", // Will be set at runtime via job parameters
@@ -342,6 +360,7 @@ export class DataPipelineStack extends cdk.Stack {
         "--additional-python-modules": PYTHON_LIBS,
         // Custom modules/wheels from S3
         //"--extra-py-files": `s3://${this.glueBucket.bucketName}/glue/libs/`,
+        "--embedding-model-id": `amazon.titan-embed-text-v2:0`,
       },
       connections: {
         connections: [this.glueConnection.ref],
