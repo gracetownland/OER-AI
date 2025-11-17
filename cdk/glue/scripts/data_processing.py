@@ -57,7 +57,7 @@ try:
         'GLUE_BUCKET',
         'rds_secret',
         'rds_proxy_endpoint',
-        'embedding-model-id'
+        'embedding_model_id'
     ])
     print("=== JOB PARAMETERS ===")
     for key, value in args.items():
@@ -66,7 +66,7 @@ try:
     # Initialize database configuration
     DB_SECRET_NAME = args['rds_secret']
     RDS_PROXY_ENDPOINT = args['rds_proxy_endpoint']
-    EMBEDDING_MODEL_ID = args['embedding-model-id']
+    EMBEDDING_MODEL_ID = args['embedding_model_id']
         
     # Parse the SQS message body
     sqs_data = json.loads(args['sqs_message_body'])
@@ -1042,7 +1042,7 @@ def process_chapter(chapter_url, base_url, book_metadata):
 def extract_text(start_url, combined_metadata, s3_bucket):
     """
     Extract text from textbook chapters and upload to S3.
-    Returns array of objects with S3 keys and metadata for each chapter.
+    Returns tuple of (extracted_chapters, image_sources).
     """
     logger.info("Starting text extraction...")
     
@@ -1057,10 +1057,11 @@ def extract_text(start_url, combined_metadata, s3_bucket):
     
     if not chapters:
         logger.warning("No chapters found in the textbook")
-        return []
+        return [], []
     
     # Process each chapter
     extracted_chapters = []
+    all_image_sources = []
     base_prefix = 'processed-textbooks'
     book_id = combined_metadata.get('bookId', 'unknown')
     book_title_safe = sanitize_filename(combined_metadata.get('title', 'unknown'))
@@ -1076,6 +1077,13 @@ def extract_text(start_url, combined_metadata, s3_bucket):
             # Upload chapter text to S3
             text_s3_key = f"{chapter_s3_prefix}/extracted.txt"
             uploaded_text_key = upload_to_s3(chapter_data['text'], text_s3_key, s3_bucket)
+            
+            # Collect image sources from this chapter
+            chapter_images = []
+            for img in chapter_data['media'].get('images', []):
+                if img.get('src'):
+                    chapter_images.append(img['src'])
+            all_image_sources.extend(chapter_images)
             
             # Create chapter result with required metadata structure
             chapter_result = {
@@ -1093,10 +1101,10 @@ def extract_text(start_url, combined_metadata, s3_bucket):
             
             extracted_chapters.append(chapter_result)
             
-            logger.info(f"Extracted chapter {i}/{len(chapters)}: {chapter_data['metadata']['title']})")
+            logger.info(f"Extracted chapter {i}/{len(chapters)}: {chapter_data['metadata']['title']} ({len(chapter_images)} images)")
     
-    logger.info(f"Text extraction complete! Processed {len(extracted_chapters)} chapters")
-    return extracted_chapters
+    logger.info(f"Text extraction complete! Processed {len(extracted_chapters)} chapters with {len(all_image_sources)} total images")
+    return extracted_chapters, all_image_sources
 
 def main():
     """Main function to orchestrate textbook processing"""
@@ -1187,7 +1195,7 @@ def main():
                 cursor.close()
         
         # Extract text from all chapters
-        extracted_chapters = extract_text(start_url, combined_metadata, s3_bucket)
+        extracted_chapters, image_sources = extract_text(start_url, combined_metadata, s3_bucket)
         
         # Process chapters into vector embeddings if we have a vector store
         if vector_store and extracted_chapters:
@@ -1203,11 +1211,18 @@ def main():
         print(f"Book: {metadata.get('title', 'Unknown')}")
         print(f"Textbook ID: {textbook_id}")
         print(f"Chapters processed: {len(extracted_chapters)}")
+        print(f"Image sources found: {len(image_sources)}")
         print(f"S3 bucket: {s3_bucket}")
         print(f"S3 prefix: {base_prefix}/{book_id}")
         print("Files uploaded:")
         for key in all_s3_keys:
             print(f"  - s3://{s3_bucket}/{key}")
+        if image_sources:
+            print("Image sources:")
+            for img_src in image_sources[:10]:  # Show first 10 to avoid too much output
+                print(f"  - {img_src}")
+            if len(image_sources) > 10:
+                print(f"  ... and {len(image_sources) - 10} more images")
         
     except Exception as e:
         logger.error(f"Error in main processing: {e}")
