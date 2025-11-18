@@ -1430,7 +1430,7 @@ export class ApiGatewayStack extends cdk.Stack {
         memorySize: 1024,
         timeout: cdk.Duration.seconds(120),
         vpc: vpcStack.vpc,
-        functionName: `${id}-PracticeMaterialDockerFunc`,
+        functionName: `${id}-PracticeMaterialLambdaDockerFunction`,
         environment: {
           REGION: this.region,
           // DB + RDS for embeddings access
