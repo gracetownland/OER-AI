@@ -360,7 +360,7 @@ def handler(event, context):
 
         # Pull a few relevant chunks as context
         docs = retriever.get_relevant_documents(topic)
-        snippets = [d.page_content.strip()[:500] for d in docs][:6]
+        snippets = [d.page_content.strip()[:500] for d in docs][:6] #pulling chunks
 
         # Build prompt based on material type
         if material_type == "mcq":
