@@ -3841,8 +3841,8 @@ paths:
         - User
       summary: Generate AI practice materials (MCQs or Flashcards) for a textbook
       operationId: generate_practice_materials
-      security:
-        - userAuthorizer: []
+      # security:
+      #   - userAuthorizer: []
       parameters:
         - name: textbook_id
           in: path

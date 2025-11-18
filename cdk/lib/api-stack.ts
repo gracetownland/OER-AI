@@ -279,6 +279,7 @@ export class ApiGatewayStack extends cdk.Stack {
       cloudWatchRole: true,
       deployOptions: {
         stageName: "prod",
+        description: "Deployment with flashcard support - Nov 18 2025",
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: true,
         metricsEnabled: true,
