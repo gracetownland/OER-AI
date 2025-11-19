@@ -227,6 +227,67 @@ def build_flashcard_prompt(topic: str, difficulty: str, num_cards: int, card_typ
     )
 
 
+def build_short_answer_prompt(
+    topic: str,
+    difficulty: str,
+    num_questions: int,
+    snippets: list[str]
+) -> str:
+    """
+    Build a prompt for generating short answer questions with sample answers and grading rubrics.
+    """
+    context_str = "\n\n".join(f"[Chunk {i+1}]\n{s}" for i, s in enumerate(snippets))
+    
+    return (
+        f"You are an expert educational content creator specializing in creating short answer questions.\n\n"
+        f"Topic: {topic}\n"
+        f"Difficulty: {difficulty}\n"
+        f"Number of questions: {num_questions}\n\n"
+        f"Context from textbook:\n{context_str}\n\n"
+        f"CRITICAL JSON FORMATTING RULES:\n"
+        f'- Use double quotes for all strings, property names, and array items\n'
+        f'- Do NOT use trailing commas (no comma after last item in array or object)\n'
+        f'- Array items: ["item1", "item2", "item3"]  <- comma between, not after last\n'
+        f'- Object properties: {{"key1": "val1", "key2": "val2"}}  <- comma between, not after last\n\n'
+        f"Required JSON structure:\n"
+        f"{{\n"
+        f'  "title": "Short Answer: {topic}",\n'
+        f'  "questions": [\n'
+        f"    {{\n"
+        f'      "id": "q1",\n'
+        f'      "questionText": "Clear, specific question requiring detailed explanation",\n'
+        f'      "context": "Optional background information or scenario (can be empty string)",\n'
+        f'      "sampleAnswer": "Comprehensive answer (100-150 words) that fully addresses the question with accurate details from the textbook",\n'
+        f'      "keyPoints": ["Key concept 1", "Key concept 2", "Key concept 3", "Key concept 4", "Key concept 5"],\n'
+        f'      "rubric": "Clear grading criteria explaining what a complete answer should include",\n'
+        f'      "expectedLength": 100\n'
+        f"    }}\n"
+        f"  ]\n"
+        f"}}\n\n"
+        f"Content requirements:\n"
+        f"- questionText: Ask open-ended questions requiring explanation, analysis, or comparison\n"
+        f"- context: Provide relevant background only if needed (use empty string \"\" if not)\n"
+        f"- sampleAnswer: Write thorough, accurate answers (100-150 words) based on textbook content\n"
+        f"- keyPoints: List 3-5 essential concepts that should be included in the answer\n"
+        f"- rubric: Explain how to evaluate answer quality and what earns full credit\n"
+        f"- expectedLength: Set to 100 for most questions\n"
+        f"- Base all content on the provided textbook context\n"
+        f"- Questions should be progressively more challenging based on difficulty level\n"
+        f"- For beginner: Focus on definitions and basic concepts\n"
+        f"- For intermediate: Require explanation of processes and relationships\n"
+        f"- For advanced: Demand analysis, evaluation, or synthesis\n\n"
+        f"Common mistakes to avoid:\n"
+        f"- WRONG: Trailing comma before closing bracket: [item1, item2,]\n"
+        f"- WRONG: Missing comma between items: [item1 item2]\n"
+        f"- WRONG: Comma after last property: {{\"key\": \"value\",}}\n"
+        f"- WRONG: Unescaped quotes in strings - use \\\" inside strings\n"
+        f"- WRONG: Extra text before or after the JSON\n"
+        f"- WRONG: Incomplete JSON - must complete all {num_questions} questions\n"
+        f"- WRONG: Sample answers that are too short or vague\n\n"
+        f"Output the complete, valid JSON now:"
+    )
+
+
 def parse_body(body: str | None) -> Dict[str, Any]:
     if not body:
         return {}
@@ -299,6 +360,59 @@ def validate_flashcard_shape(obj: Dict[str, Any], num_cards: int) -> Dict[str, A
     return obj
 
 
+def validate_short_answer_shape(obj: Dict[str, Any], num_questions: int) -> Dict[str, Any]:
+    """
+    Validate the shape of a short answer JSON object.
+    """
+    if not isinstance(obj, dict):
+        raise ValueError("Invalid root JSON")
+    if not isinstance(obj.get("title"), str) or not obj["title"].strip():
+        raise ValueError("Invalid title")
+    
+    questions = obj.get("questions")
+    if not isinstance(questions, list) or len(questions) != num_questions:
+        raise ValueError(f"questions must have exactly {num_questions} items")
+    
+    for idx, q in enumerate(questions):
+        if not isinstance(q, dict):
+            raise ValueError(f"Question[{idx}] invalid")
+        
+        # Validate id
+        if not isinstance(q.get("id"), str) or not q["id"].strip():
+            raise ValueError(f"Question[{idx}].id invalid")
+        
+        # Validate questionText
+        if not isinstance(q.get("questionText"), str) or not q["questionText"].strip():
+            raise ValueError(f"Question[{idx}].questionText invalid")
+        
+        # Validate context (optional, can be empty string)
+        if not isinstance(q.get("context"), str):
+            raise ValueError(f"Question[{idx}].context must be a string (can be empty)")
+        
+        # Validate sampleAnswer
+        if not isinstance(q.get("sampleAnswer"), str) or not q["sampleAnswer"].strip():
+            raise ValueError(f"Question[{idx}].sampleAnswer invalid")
+        
+        # Validate keyPoints (array of strings)
+        key_points = q.get("keyPoints")
+        if not isinstance(key_points, list) or len(key_points) < 3:
+            raise ValueError(f"Question[{idx}].keyPoints must be an array with at least 3 items")
+        for kp_idx, kp in enumerate(key_points):
+            if not isinstance(kp, str) or not kp.strip():
+                raise ValueError(f"Question[{idx}].keyPoints[{kp_idx}] must be a non-empty string")
+        
+        # Validate rubric
+        if not isinstance(q.get("rubric"), str) or not q["rubric"].strip():
+            raise ValueError(f"Question[{idx}].rubric invalid")
+        
+        # Validate expectedLength (optional number)
+        expected_length = q.get("expectedLength")
+        if expected_length is not None and not isinstance(expected_length, (int, float)):
+            raise ValueError(f"Question[{idx}].expectedLength must be a number")
+    
+    return obj
+
+
 def handler(event, context):
     logger.info("PracticeMaterial Lambda (Docker) invoked")
 
@@ -317,8 +431,8 @@ def handler(event, context):
     if not topic:
         return {"statusCode": 400, "body": json.dumps({"error": "'topic' is required"})}
     material_type = str(body.get("material_type", "mcq")).lower().strip()
-    if material_type not in ["mcq", "flashcard"]:
-        return {"statusCode": 400, "body": json.dumps({"error": "material_type must be 'mcq' or 'flashcard'"})}
+    if material_type not in ["mcq", "flashcard", "short_answer"]:
+        return {"statusCode": 400, "body": json.dumps({"error": "material_type must be 'mcq', 'flashcard', or 'short_answer'"})}
 
     difficulty = str(body.get("difficulty", "intermediate")).lower().strip()
     
@@ -329,6 +443,11 @@ def handler(event, context):
     # Flashcard-specific parameters
     num_cards = clamp(int(body.get("num_cards", 10)), 1, 20)
     card_type = str(body.get("card_type", "definition")).lower().strip()
+    
+    # Short answer-specific parameters
+    # For short answers, reuse num_questions but with different limits
+    if material_type == "short_answer":
+        num_questions = clamp(int(body.get("num_questions", 3)), 1, 10)
 
     try:
         # Initialize constants from SSM parameters
@@ -364,8 +483,10 @@ def handler(event, context):
         # Build prompt based on material type
         if material_type == "mcq":
             prompt = build_prompt(topic, difficulty, num_questions, num_options, snippets)
-        else:  # flashcard
+        elif material_type == "flashcard":
             prompt = build_flashcard_prompt(topic, difficulty, num_cards, card_type, snippets)
+        else:  # short_answer
+            prompt = build_short_answer_prompt(topic, difficulty, num_questions, snippets)
 
         # Use ChatBedrock LLM (matching textGeneration pattern)
         logger.info(f"Invoking LLM for {material_type} generation")
@@ -379,8 +500,10 @@ def handler(event, context):
         try:
             if material_type == "mcq":
                 result = validate_shape(extract_json(output_text), num_questions, num_options)
-            else:  # flashcard
+            elif material_type == "flashcard":
                 result = validate_flashcard_shape(extract_json(output_text), num_cards)
+            else:  # short_answer
+                result = validate_short_answer_shape(extract_json(output_text), num_questions)
         except Exception as e1:
             logger.warning(f"First parse/validation failed: {e1}")
             logger.warning(f"Raw LLM output (first 2000 chars): {output_text[:2000]}")
@@ -393,8 +516,10 @@ def handler(event, context):
             try:
                 if material_type == "mcq":
                     result = validate_shape(extract_json(output_text2), num_questions, num_options)
-                else:  # flashcard
+                elif material_type == "flashcard":
                     result = validate_flashcard_shape(extract_json(output_text2), num_cards)
+                else:  # short_answer
+                    result = validate_short_answer_shape(extract_json(output_text2), num_questions)
             except Exception as e2:
                 logger.error(f"Retry also failed: {e2}")
                 logger.error(f"Raw retry output (first 2000 chars): {output_text2[:2000]}")

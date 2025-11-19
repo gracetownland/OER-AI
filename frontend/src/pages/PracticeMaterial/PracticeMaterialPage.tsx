@@ -158,11 +158,9 @@ export default function PracticeMaterialPage() {
         requestBody.num_cards = formData.numCards;
         requestBody.card_type = formData.cardType;
       } else if (formData.materialType === "shortAnswer") {
-        console.log("Building short answer request body - using mock data");
-        // For now, return mock data instead of API call
-        setIsGenerating(false);
-        setMaterials((prev) => [...prev, mockShortAnswer]);
-        return;
+        console.log("Building short answer request body");
+        requestBody.material_type = "short_answer";
+        requestBody.num_questions = formData.numQuestions;
       } else {
         console.log("Building MCQ request body");
         requestBody.material_type = "mcq";
