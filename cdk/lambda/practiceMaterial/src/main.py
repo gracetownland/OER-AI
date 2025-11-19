@@ -413,11 +413,60 @@ def validate_short_answer_shape(obj: Dict[str, Any], num_questions: int) -> Dict
     return obj
 
 
+def build_grading_prompt(
+    question: str,
+    student_answer: str,
+    sample_answer: str,
+    key_points: list[str],
+    rubric: str
+) -> str:
+    """
+    Build a prompt for the LLM to grade a student's short answer response.
+    """
+    key_points_str = "\n".join(f"{i+1}. {kp}" for i, kp in enumerate(key_points))
+    
+    return (
+        f"You are an expert educational assessor providing constructive feedback on student answers.\n\n"
+        f"Question:\n{question}\n\n"
+        f"Student's Answer:\n{student_answer}\n\n"
+        f"Sample Answer (for reference):\n{sample_answer}\n\n"
+        f"Key Points to Cover:\n{key_points_str}\n\n"
+        f"Grading Rubric:\n{rubric}\n\n"
+        f"CRITICAL JSON FORMATTING RULES:\n"
+        f'- Use double quotes for all strings and property names\n'
+        f'- Do NOT use trailing commas\n'
+        f'- Escape quotes within strings using \\"\n\n'
+        f"Required JSON structure:\n"
+        f"{{\n"
+        f'  "feedback": "Overall qualitative assessment of the answer (2-3 sentences)",\n'
+        f'  "strengths": ["Strength 1", "Strength 2"],\n'
+        f'  "improvements": ["Improvement suggestion 1", "Improvement suggestion 2"],\n'
+        f'  "keyPointsCovered": ["Key point covered 1", "Key point covered 2"],\n'
+        f'  "keyPointsMissed": ["Key point missed 1"]\n'
+        f"}}\n\n"
+        f"Instructions:\n"
+        f"- Provide constructive, encouraging feedback\n"
+        f"- Identify 2-3 specific strengths in the student's answer\n"
+        f"- Suggest 2-3 concrete ways to improve the answer\n"
+        f"- List which key points were adequately covered\n"
+        f"- List which key points were missing or insufficiently addressed\n"
+        f"- Be specific and educational, not just critical\n"
+        f"- Arrays can be empty if no items apply\n\n"
+        f"Output the complete, valid JSON now:"
+    )
+
+
 def handler(event, context):
     logger.info("PracticeMaterial Lambda (Docker) invoked")
 
     # Validate path and parse inputs
     resource = (event.get("httpMethod", "") + " " + event.get("resource", "")).strip()
+    
+    # Handle grading endpoint
+    if resource == "POST /textbooks/{textbook_id}/practice_materials/grade":
+        return handle_grading(event, context)
+    
+    # Handle generation endpoint
     if resource != "POST /textbooks/{textbook_id}/practice_materials":
         return {"statusCode": 404, "body": json.dumps({"error": f"Unsupported route: {resource}"})}
 
@@ -554,3 +603,113 @@ def handler(event, context):
     except Exception as e:
         logger.exception("Error generating practice materials")
         return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+
+
+def handle_grading(event, context):
+    """
+    Handle grading of a student's short answer response.
+    """
+    logger.info("Grading endpoint invoked")
+    
+    body = parse_body(event.get("body"))
+    
+    # Extract required fields
+    question = str(body.get("question", "")).strip()
+    student_answer = str(body.get("student_answer", "")).strip()
+    sample_answer = str(body.get("sample_answer", "")).strip()
+    key_points = body.get("key_points", [])
+    rubric = str(body.get("rubric", "")).strip()
+    
+    # Validate inputs
+    if not question:
+        return {"statusCode": 400, "body": json.dumps({"error": "question is required"})}
+    if not student_answer:
+        return {"statusCode": 400, "body": json.dumps({"error": "student_answer is required"})}
+    if not sample_answer:
+        return {"statusCode": 400, "body": json.dumps({"error": "sample_answer is required"})}
+    if not isinstance(key_points, list) or len(key_points) == 0:
+        return {"statusCode": 400, "body": json.dumps({"error": "key_points must be a non-empty array"})}
+    if not rubric:
+        return {"statusCode": 400, "body": json.dumps({"error": "rubric is required"})}
+    
+    try:
+        # Initialize constants if needed
+        initialize_constants()
+        
+        # Build grading prompt
+        prompt = build_grading_prompt(question, student_answer, sample_answer, key_points, rubric)
+        
+        # Get LLM response
+        logger.info("Invoking LLM for grading")
+        response = _llm.invoke(prompt)
+        output_text = response.content
+        logger.info(f"Received grading response from LLM, length: {len(output_text)}")
+        logger.info(f"Raw grading output: {output_text}")
+        
+        # Parse JSON response
+        try:
+            result = extract_json(output_text)
+            
+            # Validate expected fields
+            if not isinstance(result.get("feedback"), str):
+                raise ValueError("feedback must be a string")
+            if not isinstance(result.get("strengths"), list):
+                raise ValueError("strengths must be an array")
+            if not isinstance(result.get("improvements"), list):
+                raise ValueError("improvements must be an array")
+            if not isinstance(result.get("keyPointsCovered"), list):
+                raise ValueError("keyPointsCovered must be an array")
+            if not isinstance(result.get("keyPointsMissed"), list):
+                raise ValueError("keyPointsMissed must be an array")
+                
+        except Exception as e1:
+            logger.warning(f"First grading parse failed: {e1}")
+            # Retry with enhanced prompt
+            retry_prompt = prompt + "\n\nIMPORTANT: Your previous response was invalid. Return valid JSON only."
+            logger.info("Retrying grading with enhanced prompt")
+            response2 = _llm.invoke(retry_prompt)
+            output_text2 = response2.content
+            logger.info(f"Retry grading response: {output_text2}")
+            
+            try:
+                result = extract_json(output_text2)
+            except Exception as e2:
+                logger.error(f"Retry grading also failed: {e2}")
+                return {
+                    "statusCode": 500,
+                    "headers": {
+                        "Content-Type": "application/json",
+                        "Access-Control-Allow-Headers": "*",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "*",
+                    },
+                    "body": json.dumps({
+                        "error": f"Failed to parse grading response: {str(e2)}",
+                        "rawResponse": output_text2
+                    })
+                }
+        
+        return {
+            "statusCode": 200,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "*",
+            },
+            "body": json.dumps(result),
+        }
+        
+    except Exception as e:
+        logger.exception("Error grading answer")
+        return {
+            "statusCode": 500,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Headers": "*",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "*",
+            },
+            "body": json.dumps({"error": f"Error grading answer: {str(e)}"}),
+        }
+

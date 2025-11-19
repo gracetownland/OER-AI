@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Trash2, BookOpen, Check, X } from "lucide-react";
+import { Trash2, BookOpen, Check, X, Loader2 } from "lucide-react";
 import type { ShortAnswerQuestion } from "@/types/PracticeMaterial";
+import { useTextbookView } from "@/providers/textbookView";
 
 interface ShortAnswerProps {
   title: string;
@@ -11,11 +12,21 @@ interface ShortAnswerProps {
   onDelete: () => void;
 }
 
+interface GradingFeedback {
+  feedback: string;
+  strengths: string[];
+  improvements: string[];
+  keyPointsCovered: string[];
+  keyPointsMissed: string[];
+}
+
 export function ShortAnswer({ title, questions, onDelete }: ShortAnswerProps) {
+  const { textbook } = useTextbookView();
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState<Record<string, boolean>>({});
-  const [showFeedback, setShowFeedback] = useState<Record<string, boolean>>({});
+  const [grading, setGrading] = useState<Record<string, boolean>>({});
+  const [feedback, setFeedback] = useState<Record<string, GradingFeedback>>({});
 
   const currentQuestion = questions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
@@ -27,15 +38,60 @@ export function ShortAnswer({ title, questions, onDelete }: ShortAnswerProps) {
     }));
   };
 
-  const handleSubmitAnswer = (questionId: string) => {
-    setSubmitted((prev) => ({
-      ...prev,
-      [questionId]: true,
-    }));
-    setShowFeedback((prev) => ({
-      ...prev,
-      [questionId]: true,
-    }));
+  const handleSubmitAnswer = async (questionId: string) => {
+    if (!textbook?.id) return;
+    
+    const question = questions.find(q => q.id === questionId);
+    if (!question) return;
+    
+    setGrading((prev) => ({ ...prev, [questionId]: true }));
+    
+    try {
+      // Get public token
+      const tokenResp = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`);
+      if (!tokenResp.ok) throw new Error("Failed to get public token");
+      const { token } = await tokenResp.json();
+      
+      // Call grading endpoint
+      const response = await fetch(
+        `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${textbook.id}/practice_materials/grade`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            question: question.questionText,
+            student_answer: answers[questionId] || "",
+            sample_answer: question.sampleAnswer,
+            key_points: question.keyPoints || [],
+            rubric: question.rubric,
+          }),
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error("Failed to grade answer");
+      }
+      
+      const gradingResult: GradingFeedback = await response.json();
+      
+      setFeedback((prev) => ({
+        ...prev,
+        [questionId]: gradingResult,
+      }));
+      
+      setSubmitted((prev) => ({
+        ...prev,
+        [questionId]: true,
+      }));
+    } catch (error) {
+      console.error("Error grading answer:", error);
+      alert("Failed to grade answer. Please try again.");
+    } finally {
+      setGrading((prev) => ({ ...prev, [questionId]: false }));
+    }
   };
 
   const handleNextQuestion = () => {
@@ -53,12 +109,15 @@ export function ShortAnswer({ title, questions, onDelete }: ShortAnswerProps) {
   const handleReset = () => {
     setAnswers({});
     setSubmitted({});
-    setShowFeedback({});
+    setFeedback({});
+    setGrading({});
     setCurrentQuestionIndex(0);
   };
 
   const isCurrentAnswerSubmitted = submitted[currentQuestion.id];
+  const isCurrentAnswerGrading = grading[currentQuestion.id];
   const currentAnswer = answers[currentQuestion.id] || "";
+  const currentFeedback = feedback[currentQuestion.id];
 
   return (
     <Card className="w-full">
@@ -123,31 +182,106 @@ export function ShortAnswer({ title, questions, onDelete }: ShortAnswerProps) {
           {!isCurrentAnswerSubmitted && (
             <Button
               onClick={() => handleSubmitAnswer(currentQuestion.id)}
-              disabled={!currentAnswer.trim()}
+              disabled={!currentAnswer.trim() || isCurrentAnswerGrading}
               className="w-full"
             >
-              Submit Answer
+              {isCurrentAnswerGrading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Grading...
+                </>
+              ) : (
+                "Submit Answer"
+              )}
             </Button>
           )}
 
           {/* Feedback */}
-          {isCurrentAnswerSubmitted && showFeedback[currentQuestion.id] && (
+          {isCurrentAnswerSubmitted && currentFeedback && (
             <div className="space-y-4">
-              <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg space-y-3">
-                <div className="flex items-start gap-2">
-                  <div className="flex-shrink-0 mt-0.5">
-                    <Check className="h-5 w-5 text-green-600" />
+              {/* Overall Feedback */}
+              <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg">
+                <p className="font-medium mb-2">Feedback:</p>
+                <p className="text-sm">{currentFeedback.feedback}</p>
+              </div>
+
+              {/* Strengths */}
+              {currentFeedback.strengths.length > 0 && (
+                <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <Check className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="font-medium text-green-900 dark:text-green-100 mb-2">Strengths:</p>
+                      <ul className="space-y-1 text-sm text-green-800 dark:text-green-200">
+                        {currentFeedback.strengths.map((strength, idx) => (
+                          <li key={idx} className="flex items-start gap-2">
+                            <span className="text-green-600 dark:text-green-400 mt-0.5">•</span>
+                            <span>{strength}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   </div>
-                  <div className="flex-1 space-y-2">
-                    <p className="font-medium">Sample Answer:</p>
-                    <p className="text-sm">{currentQuestion.sampleAnswer}</p>
+                </div>
+              )}
+
+              {/* Improvements */}
+              {currentFeedback.improvements.length > 0 && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
+                  <p className="font-medium text-blue-900 dark:text-blue-100 mb-2">Suggestions for Improvement:</p>
+                  <ul className="space-y-1 text-sm text-blue-800 dark:text-blue-200">
+                    {currentFeedback.improvements.map((improvement, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="text-blue-600 dark:text-blue-400 mt-0.5">•</span>
+                        <span>{improvement}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Key Points Analysis */}
+              <div className="bg-secondary/50 p-4 rounded-lg space-y-3">
+                {currentFeedback.keyPointsCovered.length > 0 && (
+                  <div>
+                    <p className="font-medium text-sm mb-2">Key Points Covered:</p>
+                    <ul className="space-y-1 text-sm text-muted-foreground">
+                      {currentFeedback.keyPointsCovered.map((point, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <Check className="h-4 w-4 text-green-600 flex-shrink-0 mt-0.5" />
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
+                )}
+                
+                {currentFeedback.keyPointsMissed.length > 0 && (
+                  <div className="pt-3 border-t border-border">
+                    <p className="font-medium text-sm mb-2">Key Points to Consider:</p>
+                    <ul className="space-y-1 text-sm text-muted-foreground">
+                      {currentFeedback.keyPointsMissed.map((point, idx) => (
+                        <li key={idx} className="flex items-start gap-2">
+                          <X className="h-4 w-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Sample Answer & Rubric */}
+              <div className="bg-muted/50 p-4 rounded-lg space-y-3">
+                <div>
+                  <p className="font-medium text-sm mb-2">Sample Answer:</p>
+                  <p className="text-sm text-muted-foreground">{currentQuestion.sampleAnswer}</p>
                 </div>
 
                 {currentQuestion.keyPoints && currentQuestion.keyPoints.length > 0 && (
-                  <div className="space-y-2 pt-3 border-t border-primary/20">
-                    <p className="font-medium text-sm">Key Points to Cover:</p>
-                    <ul className="space-y-1 text-sm">
+                  <div className="pt-3 border-t border-border">
+                    <p className="font-medium text-sm mb-2">Key Points:</p>
+                    <ul className="space-y-1 text-sm text-muted-foreground">
                       {currentQuestion.keyPoints.map((point, idx) => (
                         <li key={idx} className="flex items-start gap-2">
                           <span className="text-primary mt-0.5">•</span>
@@ -159,8 +293,8 @@ export function ShortAnswer({ title, questions, onDelete }: ShortAnswerProps) {
                 )}
 
                 {currentQuestion.rubric && (
-                  <div className="space-y-2 pt-3 border-t border-primary/20">
-                    <p className="font-medium text-sm">Grading Rubric:</p>
+                  <div className="pt-3 border-t border-border">
+                    <p className="font-medium text-sm mb-2">Grading Rubric:</p>
                     <p className="text-sm text-muted-foreground">{currentQuestion.rubric}</p>
                   </div>
                 )}
