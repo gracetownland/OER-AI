@@ -157,6 +157,12 @@ export default function PracticeMaterialPage() {
         requestBody.material_type = "flashcard";
         requestBody.num_cards = formData.numCards;
         requestBody.card_type = formData.cardType;
+      } else if (formData.materialType === "shortAnswer") {
+        console.log("Building short answer request body - using mock data");
+        // For now, return mock data instead of API call
+        setIsGenerating(false);
+        setMaterials((prev) => [...prev, mockShortAnswer]);
+        return;
       } else {
         console.log("Building MCQ request body");
         requestBody.material_type = "mcq";
@@ -198,10 +204,6 @@ export default function PracticeMaterialPage() {
     setMaterials((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleLoadMockShortAnswer = () => {
-    setMaterials((prev) => [...prev, mockShortAnswer]);
-  };
-
   return (
     <div className="w-full max-w-[1800px] px-4 py-4">
       <div className="min-h-screen flex flex-col md:flex-row md:items-start md:justify-center gap-6">
@@ -213,14 +215,6 @@ export default function PracticeMaterialPage() {
           {errorMsg && (
             <p className="text-sm text-destructive mt-2">{errorMsg}</p>
           )}
-          <div className="mt-4">
-            <button
-              onClick={handleLoadMockShortAnswer}
-              className="w-full px-4 py-2 text-sm bg-secondary hover:bg-secondary/80 rounded-md transition-colors"
-            >
-              Load Mock Short Answer (Demo)
-            </button>
-          </div>
         </div>
 
         <div className="w-full md:w-[70%] space-y-6">
