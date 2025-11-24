@@ -6,10 +6,12 @@ from typing import Any, Dict
 
 from helpers.vectorstore import get_textbook_retriever
 from langchain_aws import BedrockEmbeddings, ChatBedrock
+
+# Set up basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Environment
+# Environment variables
 REGION = os.environ.get("REGION", "ca-central-1")
 SM_DB_CREDENTIALS = os.environ.get("SM_DB_CREDENTIALS", "")
 RDS_PROXY_ENDPOINT = os.environ.get("RDS_PROXY_ENDPOINT", "")
@@ -17,10 +19,10 @@ PRACTICE_MATERIAL_MODEL_PARAM = os.environ.get("PRACTICE_MATERIAL_MODEL_PARAM")
 EMBEDDING_MODEL_PARAM = os.environ.get("EMBEDDING_MODEL_PARAM")
 BEDROCK_REGION_PARAM = os.environ.get("BEDROCK_REGION_PARAM")
 
-# Clients
+# AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
-# bedrock_runtime will be initialized in initialize_constants() with the correct region
+bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')
 
 # Cache
 _db_secret: Dict[str, Any] | None = None
@@ -28,7 +30,6 @@ _practice_material_model_id: str | None = None
 _embedding_model_id: str | None = None
 _bedrock_region: str | None = None
 _embeddings = None
-_bedrock_runtime = None
 _llm = None
 
 
@@ -54,7 +55,7 @@ def get_parameter(param_name: str | None, cached_var: str | None) -> str | None:
 
 def initialize_constants():
     """Initialize model IDs and region from SSM parameters"""
-    global _practice_material_model_id, _embedding_model_id, _bedrock_region, _embeddings, _bedrock_runtime, _llm
+    global _practice_material_model_id, _embedding_model_id, _bedrock_region, _embeddings, _llm
     
     # Get practice material model ID from SSM
     _practice_material_model_id = get_parameter(PRACTICE_MATERIAL_MODEL_PARAM, _practice_material_model_id)
@@ -72,22 +73,17 @@ def initialize_constants():
         _bedrock_region = REGION
         logger.info(f"BEDROCK_REGION_PARAM not configured, using deployment region: {_bedrock_region}")
     
-    # Initialize bedrock_runtime client with the correct region (matching textGeneration pattern)
-    if _bedrock_runtime is None:
-        _bedrock_runtime = boto3.client("bedrock-runtime", region_name=_bedrock_region)
-        logger.info(f"Initialized bedrock_runtime client for region: {_bedrock_region}")
-    
-    # Initialize embeddings (use us-east-1 region for Cohere Embed v4, matching textGeneration pattern)
     if _embeddings is None:
         _embeddings = BedrockEmbeddings(
             model_id=_embedding_model_id,
-            client=boto3.client("bedrock-runtime", region_name='us-east-1'),  # Use us-east-1 client for Cohere Embed v4
-            region_name='us-east-1',  # Use us-east-1 for Cohere Embed v4
-            model_kwargs = {"input_type": "search_query"}  # Use search_query for querying vector store
+            client=bedrock_runtime,
+            region_name='us-east-1',
+            model_kwargs = {"input_type": "search_query"}
         )
     
-    # Initialize LLM using ChatBedrock (matching textGeneration pattern)
     if _llm is None:
+        # Create bedrock client for LLM in the appropriate region
+        llm_client = boto3.client("bedrock-runtime", region_name=_bedrock_region)
         model_kwargs = {
             "temperature": 0.6,
             "max_tokens": 2048,
@@ -99,7 +95,7 @@ def initialize_constants():
         _llm = ChatBedrock(
             model_id=_practice_material_model_id,
             model_kwargs=model_kwargs,
-            client=_bedrock_runtime
+            client=llm_client
         )
         logger.info("ChatBedrock LLM initialized successfully")
 
