@@ -81,7 +81,7 @@ def initialize_constants():
     if _embeddings is None:
         _embeddings = BedrockEmbeddings(
             model_id=_embedding_model_id,
-            client=boto3.client("bedrock-runtime", region_name=REGION),  # Separate client for embeddings in deployment region
+            client=boto3.client("bedrock-runtime", region_name='us-east-1'),  # Use us-east-1 client for Cohere Embed v4
             region_name='us-east-1',  # Use us-east-1 for Cohere Embed v4
             model_kwargs = {"input_type": "search_query"}  # Use search_query for querying vector store
         )
