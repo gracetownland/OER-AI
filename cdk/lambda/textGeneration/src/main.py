@@ -25,7 +25,7 @@ TABLE_NAME_PARAM = os.environ.get("TABLE_NAME_PARAM")
 # AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
-bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
+bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')
 
 connection = None
 db_secret = None
@@ -154,7 +154,7 @@ def process_query_streaming(query, textbook_id, retriever, chat_session_id, webs
                 })
             )
         except Exception as ws_error:
-            logger.error(f"Failed to send error via WebSocket: {ws_error}")
+            logger.error(f"Failed to send the error via WebSocket: {ws_error}")
         
         return {
             "response": f"I'm sorry, I encountered an error while processing your question.",

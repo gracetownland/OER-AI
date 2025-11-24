@@ -4,11 +4,11 @@ import os
 import time
 from langchain_aws import ChatBedrock, BedrockLLM
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains import create_retrieval_chain, create_history_aware_retriever
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
+from langchain_classic.chains.retrieval import create_retrieval_chain
+from langchain_classic.chains.history_aware_retriever import create_history_aware_retriever
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_message_histories import DynamoDBChatMessageHistory
-from langchain_core.pydantic_v1 import BaseModel, Field
 import logging
 import json
 import traceback
