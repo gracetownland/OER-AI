@@ -21,6 +21,8 @@ from langchain_aws import BedrockEmbeddings
 from langchain_postgres import PGVector
 from langchain_core.documents import Document
 from awsglue.utils import getResolvedOptions
+from awsglue.context import GlueContext
+from pyspark.context import SparkContext
 from urllib.parse import urljoin, urlparse
 import time
 import base64
@@ -60,6 +62,8 @@ try:
         'rds_proxy_endpoint',
         'embedding_model_id'
     ])
+    sc = SparkContext()
+    glueContext = GlueContext(sc)
     print("=== JOB PARAMETERS ===")
     for key, value in args.items():
         print(f"{key}: {value}")
@@ -141,7 +145,8 @@ def initialize_embeddings_and_vectorstore(textbook_id, textbook_title):
             logger.info(f"Initializing Bedrock embeddings with model: {EMBEDDING_MODEL_ID}")
             embeddings = BedrockEmbeddings(
                 model_id=EMBEDDING_MODEL_ID,
-                region_name=args['region_name']
+                region_name='us-east-1',
+                model_kwargs = {"input_type": "search_document"}
             )
             logger.info("Bedrock embeddings initialized successfully")
         
