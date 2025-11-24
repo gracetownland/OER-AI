@@ -25,7 +25,7 @@ TABLE_NAME_PARAM = os.environ.get("TABLE_NAME_PARAM")
 # AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
-bedrock_runtime = boto3.client("bedrock-runtime", region_name=REGION)
+bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')
 
 connection = None
 db_secret = None

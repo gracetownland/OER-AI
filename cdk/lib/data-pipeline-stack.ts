@@ -360,7 +360,7 @@ export class DataPipelineStack extends cdk.Stack {
         "--additional-python-modules": PYTHON_LIBS,
         // Custom modules/wheels from S3
         //"--extra-py-files": `s3://${this.glueBucket.bucketName}/glue/libs/`,
-        "--embedding_model_id": `amazon.titan-embed-text-v2:0`,
+        "--embedding_model_id": `cohere.embed-v4:0`,
       },
       connections: {
         connections: [this.glueConnection.ref],

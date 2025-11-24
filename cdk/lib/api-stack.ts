@@ -736,7 +736,7 @@ export class ApiGatewayStack extends cdk.Stack {
       {
         parameterName: `/${id}/OER/EmbeddingModelId`,
         description: "Parameter containing the Embedding Model ID",
-        stringValue: "amazon.titan-embed-text-v2:0",
+        stringValue: "cohere.embed-v4:0",
       }
     );
 
