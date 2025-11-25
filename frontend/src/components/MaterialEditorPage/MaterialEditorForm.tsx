@@ -38,10 +38,7 @@ const mcqSchema = z.object({
 const flashcardSchema = z.object({
   materialType: z.literal("flashcards"),
   topic: z.string().min(1, "Topic is required").max(200, "Topic too long"),
-  numCards: z
-    .number()
-    .min(1, "Must be at least 1")
-    .max(30, "Maximum 30 cards"),
+  numCards: z.number().min(1, "Must be at least 1").max(30, "Maximum 30 cards"),
   cardType: z.enum(["definition", "concept", "formula", "general"]),
   difficulty: z.enum(["beginner", "intermediate", "advanced"]),
 });
@@ -56,7 +53,11 @@ const shortAnswerSchema = z.object({
   difficulty: z.enum(["beginner", "intermediate", "advanced"]),
 });
 
-const formSchema = z.discriminatedUnion("materialType", [mcqSchema, flashcardSchema, shortAnswerSchema]);
+const formSchema = z.discriminatedUnion("materialType", [
+  mcqSchema,
+  flashcardSchema,
+  shortAnswerSchema,
+]);
 
 type FormData = z.infer<typeof formSchema>;
 
@@ -65,7 +66,9 @@ interface MaterialEditorFormProps {
 }
 
 export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
-  const [currentMaterialType, setCurrentMaterialType] = useState<"mcq" | "flashcards" | "shortAnswer">("mcq");
+  const [currentMaterialType, setCurrentMaterialType] = useState<
+    "mcq" | "flashcards" | "shortAnswer"
+  >("mcq");
 
   const {
     control,
@@ -91,9 +94,11 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
   };
 
   // Handle material type change
-  const handleMaterialTypeChange = (value: "mcq" | "flashcards" | "shortAnswer") => {
+  const handleMaterialTypeChange = (
+    value: "mcq" | "flashcards" | "shortAnswer"
+  ) => {
     setCurrentMaterialType(value);
-    
+
     if (value === "flashcards") {
       reset({
         materialType: value,
@@ -145,11 +150,13 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
               name="materialType"
               control={control}
               render={({ field }) => (
-                <Select 
-                  value={field.value} 
+                <Select
+                  value={field.value}
                   onValueChange={(value) => {
                     field.onChange(value);
-                    handleMaterialTypeChange(value as "mcq" | "flashcards" | "shortAnswer");
+                    handleMaterialTypeChange(
+                      value as "mcq" | "flashcards" | "shortAnswer"
+                    );
                   }}
                 >
                   <SelectTrigger
@@ -159,7 +166,9 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
                     <SelectValue placeholder="Select type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="mcq">Multiple Choice Questions</SelectItem>
+                    <SelectItem value="mcq">
+                      Multiple Choice Questions
+                    </SelectItem>
                     <SelectItem value="flashcards">Flashcards</SelectItem>
                     <SelectItem value="shortAnswer">Short Answer</SelectItem>
                   </SelectContent>
@@ -201,13 +210,19 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
                     id="num-questions"
                     type="number"
                     placeholder="Enter a number"
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                    className={(errors as any).numQuestions ? "border-red-500" : ""}
+                    onChange={(e) =>
+                      field.onChange(parseInt(e.target.value) || 0)
+                    }
+                    className={
+                      (errors as any).numQuestions ? "border-red-500" : ""
+                    }
                   />
                 )}
               />
               {(errors as any).numQuestions && (
-                <p className="text-sm text-red-500">{(errors as any).numQuestions.message}</p>
+                <p className="text-sm text-red-500">
+                  {(errors as any).numQuestions.message}
+                </p>
               )}
             </div>
           )}
@@ -224,13 +239,17 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
                     id="num-cards"
                     type="number"
                     placeholder="Enter a number"
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                    onChange={(e) =>
+                      field.onChange(parseInt(e.target.value) || 0)
+                    }
                     className={(errors as any).numCards ? "border-red-500" : ""}
                   />
                 )}
               />
               {(errors as any).numCards && (
-                <p className="text-sm text-red-500">{(errors as any).numCards.message}</p>
+                <p className="text-sm text-red-500">
+                  {(errors as any).numCards.message}
+                </p>
               )}
             </div>
           )}
@@ -247,13 +266,19 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
                     id="num-options"
                     type="number"
                     placeholder="Enter a number"
-                    onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
-                    className={(errors as any).numOptions ? "border-red-500" : ""}
+                    onChange={(e) =>
+                      field.onChange(parseInt(e.target.value) || 0)
+                    }
+                    className={
+                      (errors as any).numOptions ? "border-red-500" : ""
+                    }
                   />
                 )}
               />
               {(errors as any).numOptions && (
-                <p className="text-sm text-red-500">{(errors as any).numOptions.message}</p>
+                <p className="text-sm text-red-500">
+                  {(errors as any).numOptions.message}
+                </p>
               )}
             </div>
           )}
@@ -266,7 +291,10 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
                 control={control}
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="border-grey w-full" id="card-type">
+                    <SelectTrigger
+                      className="border-grey w-full"
+                      id="card-type"
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -283,26 +311,30 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
 
           {/* Difficulty */}
           <div className="space-y-2">
-              <Label htmlFor="difficulty">Difficulty</Label>
-              <Controller
-                name="difficulty"
-                control={control}
-                render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="border-grey w-full" id="difficulty">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="beginner">Beginner</SelectItem>
-                      <SelectItem value="intermediate">Intermediate</SelectItem>
-                      <SelectItem value="advanced">Advanced</SelectItem>
-                    </SelectContent>
-                  </Select>
-                )}
-              />
-            </div>
+            <Label htmlFor="difficulty">Difficulty</Label>
+            <Controller
+              name="difficulty"
+              control={control}
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger className="border-grey w-full" id="difficulty">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="beginner">Beginner</SelectItem>
+                    <SelectItem value="intermediate">Intermediate</SelectItem>
+                    <SelectItem value="advanced">Advanced</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+            />
+          </div>
 
-          <Button type="submit" className="cursor-pointer w-full" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            className="cursor-pointer w-full"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Generating..." : "Generate"}
           </Button>
         </form>

@@ -84,7 +84,7 @@ exports.handler = async (event) => {
           result = await sqlConnection`
             SELECT 
               id, title, prompt_text, owner_session_id, owner_user_id, 
-              textbook_id, role, visibility, tags, created_at, updated_at, metadata,
+              textbook_id, role, visibility, tags, created_at, updated_at, metadata, reported,
               COUNT(*) OVER() as total_count
             FROM shared_user_prompts
             WHERE textbook_id = ${sharedTextbookId} AND role = ${role}
@@ -95,7 +95,7 @@ exports.handler = async (event) => {
           result = await sqlConnection`
             SELECT 
               id, title, prompt_text, owner_session_id, owner_user_id, 
-              textbook_id, role, visibility, tags, created_at, updated_at, metadata,
+              textbook_id, role, visibility, tags, created_at, updated_at, metadata, reported,
               COUNT(*) OVER() as total_count
             FROM shared_user_prompts
             WHERE textbook_id = ${sharedTextbookId}
@@ -159,7 +159,7 @@ exports.handler = async (event) => {
         const prompt = await sqlConnection`
           SELECT 
             id, title, prompt_text, owner_session_id, owner_user_id, 
-            textbook_id, role, visibility, tags, created_at, updated_at, metadata
+            textbook_id, role, visibility, tags, created_at, updated_at, metadata, reported
           FROM shared_user_prompts
           WHERE id = ${promptId}
         `;
@@ -183,15 +183,15 @@ exports.handler = async (event) => {
         }
         
         const updateData = parseBody(event.body);
-        const { title: updateTitle, prompt_text: updatePromptText, visibility: updateVisibility, tags: updateTags, metadata: updateMetadata } = updateData;
+        const { title: updateTitle, prompt_text: updatePromptText, visibility: updateVisibility, tags: updateTags, metadata: updateMetadata, reported: updateReported } = updateData;
         
         const updated = await sqlConnection`
           UPDATE shared_user_prompts 
           SET title = ${updateTitle}, prompt_text = ${updatePromptText}, visibility = ${updateVisibility}, 
-              tags = ${updateTags}, metadata = ${updateMetadata || {}}, updated_at = NOW()
+              tags = ${updateTags}, metadata = ${updateMetadata || {}}, reported = ${updateReported !== undefined ? updateReported : false}, updated_at = NOW()
           WHERE id = ${updatePromptId}
           RETURNING id, title, prompt_text, owner_session_id, owner_user_id, 
-                    textbook_id, role, visibility, tags, created_at, updated_at, metadata
+                    textbook_id, role, visibility, tags, created_at, updated_at, metadata, reported
         `;
         
         if (updated.length === 0) {

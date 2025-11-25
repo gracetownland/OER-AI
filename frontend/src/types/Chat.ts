@@ -20,6 +20,7 @@ export interface SharedUserPrompt {
   created_at: string;
   updated_at: string;
   metadata: any;
+  reported?: boolean;
 }
 
 export interface GuidedPromptQuestion {

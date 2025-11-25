@@ -4,8 +4,6 @@
 #
 #    pip-compile --output-file=requirements.txt requirements.in
 #
-# NOTE: Versions aligned with textGeneration to ensure API compatibility
-#
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.12.15
@@ -76,7 +74,7 @@ langchain-classic==1.0.0
     # via
     #   -r requirements.in
     #   langchain-community
-langchain-community==0.3.29
+langchain-community==0.4.1
     # via -r requirements.in
 langchain-core==1.0.7
     # via
@@ -201,7 +199,10 @@ tenacity==9.1.2
     #   langchain-core
 typing-extensions==4.15.0
     # via
+    #   aiosignal
+    #   anyio
     #   langchain-core
+    #   psycopg
     #   psycopg-pool
     #   pydantic
     #   pydantic-core
@@ -214,6 +215,8 @@ typing-inspection==0.4.1
     # via
     #   pydantic
     #   pydantic-settings
+tzdata==2025.2
+    # via psycopg
 urllib3==2.5.0
     # via
     #   -r requirements.in
