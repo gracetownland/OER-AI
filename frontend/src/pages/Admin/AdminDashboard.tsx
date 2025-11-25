@@ -3,13 +3,14 @@ import { BookOpen } from "lucide-react";
 import AdminSidebar from "@/components/Admin/AdminSidebar";
 import TextbookManagement from "@/components/Admin/TextbookManagement";
 import Analytics from "@/components/Admin/Analytics";
+import AISettings from "@/components/Admin/AISettings";
 
 // --- Components ---
 
 export default function AdminDashboard() {
-  const [activeView, setActiveView] = useState<"dashboard" | "analytics">(
-    "dashboard"
-  );
+  const [activeView, setActiveView] = useState<
+    "dashboard" | "analytics" | "ai-settings"
+  >("dashboard");
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -26,7 +27,9 @@ export default function AdminDashboard() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8">
-          {activeView === "dashboard" ? <TextbookManagement /> : <Analytics />}
+          {activeView === "dashboard" && <TextbookManagement />}
+          {activeView === "analytics" && <Analytics />}
+          {activeView === "ai-settings" && <AISettings />}
         </main>
       </div>
     </div>

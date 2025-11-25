@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
 import {
   Search,
   Upload,
@@ -48,6 +49,7 @@ export default function TextbookManagement() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const filteredTextbooks = textbooks.filter(
     (book) =>
@@ -283,13 +285,23 @@ export default function TextbookManagement() {
                   </TableRow>
                 ) : (
                   filteredTextbooks.map((book) => (
-                    <TableRow key={book.id} className="hover:bg-gray-50/50">
+                    <TableRow
+                      key={book.id}
+                      className="hover:bg-gray-50/50 cursor-pointer"
+                      onClick={() => navigate(`/admin/textbook/${book.id}`)}
+                    >
                       <TableCell>
                         <div className="flex flex-col">
-                          <span className="font-medium text-gray-900">
+                          <span
+                            className="font-medium text-gray-900 truncate max-w-[200px] sm:max-w-[300px]"
+                            title={book.title}
+                          >
                             {book.title}
                           </span>
-                          <span className="text-xs text-gray-500">
+                          <span
+                            className="text-xs text-gray-500 truncate max-w-[200px] sm:max-w-[300px]"
+                            title={book.author}
+                          >
                             {book.author}
                           </span>
                         </div>
@@ -325,12 +337,17 @@ export default function TextbookManagement() {
                             <Switch
                               checked={book.status === "Active"}
                               onCheckedChange={() => toggleStatus(book.id)}
+                              onClick={(e) => e.stopPropagation()}
                             />
                           </div>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-gray-400 hover:text-[#2c5f7c]"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Refresh logic here
+                            }}
                           >
                             <RefreshCw className="h-4 w-4" />
                           </Button>
@@ -338,7 +355,10 @@ export default function TextbookManagement() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-gray-400 hover:text-red-600"
-                            onClick={() => handleDelete(book.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(book.id);
+                            }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
