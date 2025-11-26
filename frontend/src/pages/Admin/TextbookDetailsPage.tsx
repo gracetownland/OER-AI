@@ -79,6 +79,13 @@ type SharedPrompt = {
   updated_at: string;
 };
 
+type IngestionStatus = {
+  total_sections: number;
+  ingested_sections: number;
+  image_count: number;
+  images: any[];
+};
+
 function ChartCard({
   title,
   subtitle,
@@ -137,6 +144,8 @@ export default function TextbookDetailsPage() {
   });
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [sharedPrompts, setSharedPrompts] = useState<SharedPrompt[]>([]);
+  const [ingestionStatus, setIngestionStatus] =
+    useState<IngestionStatus | null>(null);
   const [timeRange, setTimeRange] = useState("3m");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +161,9 @@ export default function TextbookDetailsPage() {
     if (id && activeView === "faq") {
       fetchFAQs();
       fetchSharedPrompts();
+    }
+    if (id && activeView === "status") {
+      fetchIngestionStatus();
     }
   }, [id, activeView]);
 
@@ -264,6 +276,34 @@ export default function TextbookDetailsPage() {
       setSharedPrompts(data.prompts || []);
     } catch (err) {
       console.error("Error fetching shared prompts:", err);
+    }
+  };
+
+  const fetchIngestionStatus = async () => {
+    try {
+      const session = await AuthService.getAuthSession(true);
+      const token = session.tokens.idToken;
+
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/admin/textbooks/${id}/ingestion_status`,
+        {
+          headers: {
+            Authorization: token,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch ingestion status");
+      }
+
+      const data = await response.json();
+      setIngestionStatus(data);
+    } catch (err) {
+      console.error("Error fetching ingestion status:", err);
     }
   };
 
@@ -696,105 +736,82 @@ export default function TextbookDetailsPage() {
                   </p>
                 </div>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Ingestion Status</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-4 p-4 bg-green-50 border border-green-100 rounded-lg">
-                      <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
-                        <CheckCircle2 className="h-6 w-6 text-green-600" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-green-900 text-lg">
-                          Fully Ingested
-                        </p>
-                        <p className="text-green-700">
-                          {textbook.section_count} sections have been processed
-                          and indexed successfully.
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <MetricCard
+                    title="Sections Ingested"
+                    value={`${ingestionStatus?.ingested_sections || 0}/${
+                      ingestionStatus?.total_sections || 0
+                    }`}
+                    icon={<CheckCircle2 className="h-5 w-5 text-green-600" />}
+                    trend={
+                      ingestionStatus?.ingested_sections ===
+                        ingestionStatus?.total_sections &&
+                      (ingestionStatus?.total_sections || 0) > 0
+                        ? "Fully Ingested"
+                        : "In Progress"
+                    }
+                  />
+                  <MetricCard
+                    title="Images Ingested"
+                    value={(ingestionStatus?.image_count || 0).toString()}
+                    icon={<FileVideo className="h-5 w-5 text-blue-600" />}
+                    trend="Total images found"
+                  />
+                </div>
 
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Associated Media
                   </h3>
                   <div className="grid gap-4">
-                    {[
-                      {
-                        type: "video",
-                        title: "Lecture 1: Introduction to CS",
-                        duration: "45:00",
-                        size: "1.2 GB",
-                      },
-                      {
-                        type: "audio",
-                        title: "Podcast: The History of Computing",
-                        duration: "15:30",
-                        size: "24 MB",
-                      },
-                      {
-                        type: "video",
-                        title: "Chapter 2: Algorithms Walkthrough",
-                        duration: "22:15",
-                        size: "450 MB",
-                      },
-                      {
-                        type: "video",
-                        title: "Lab Session 1 Recording",
-                        duration: "55:00",
-                        size: "1.5 GB",
-                      },
-                    ].map((media, i) => (
-                      <Card key={i}>
-                        <CardContent className="p-4 flex items-center justify-between">
-                          <div className="flex items-center gap-4">
-                            <div
-                              className={`h-12 w-12 rounded-lg flex items-center justify-center ${
-                                media.type === "video"
-                                  ? "bg-red-100"
-                                  : "bg-blue-100"
-                              }`}
-                            >
-                              {media.type === "video" ? (
-                                <PlayCircle
-                                  className={`h-6 w-6 ${
-                                    media.type === "video"
-                                      ? "text-red-600"
-                                      : "text-blue-600"
-                                  }`}
-                                />
-                              ) : (
-                                <FileAudio className="h-6 w-6 text-blue-600" />
-                              )}
+                    {ingestionStatus?.images &&
+                    ingestionStatus.images.length > 0 ? (
+                      ingestionStatus.images.map((img: any, i: number) => (
+                        <Card key={i}>
+                          <CardContent className="p-4 flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                              <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden shrink-0">
+                                {img.url ? (
+                                  <img
+                                    src={img.url}
+                                    alt={img.alt || "Media"}
+                                    className="h-full w-full object-cover"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <FileVideo className="h-6 w-6 text-blue-600" />
+                                )}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium text-gray-900 line-clamp-1">
+                                  {img.caption || img.alt || `Image ${i + 1}`}
+                                </p>
+                                <p className="text-sm text-gray-500 truncate">
+                                  Chapter {img.chapter_number}:{" "}
+                                  {img.chapter_title}
+                                </p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-medium text-gray-900">
-                                {media.title}
-                              </p>
-                              <p className="text-sm text-gray-500 capitalize">
-                                {media.type} • {media.duration} • {media.size}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button variant="outline" size="sm">
-                              Preview
-                            </Button>
                             <Button
-                              variant="ghost"
+                              variant="outline"
                               size="sm"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => window.open(img.url, "_blank")}
+                              disabled={!img.url}
                             >
-                              Unlink
+                              View
                             </Button>
-                          </div>
+                          </CardContent>
+                        </Card>
+                      ))
+                    ) : (
+                      <Card className="bg-gray-50 border-dashed">
+                        <CardContent className="p-6 text-center text-gray-500">
+                          No associated media found.
                         </CardContent>
                       </Card>
-                    ))}
+                    )}
                   </div>
                 </div>
               </div>

@@ -478,6 +478,81 @@ exports.handler = async (event) => {
         response.body = JSON.stringify({ prompts: sharedPrompts });
         break;
 
+      // GET /admin/textbooks/{textbook_id}/ingestion_status - Get detailed ingestion status
+      case "GET /admin/textbooks/{textbook_id}/ingestion_status":
+        const statusTextbookId = event.pathParameters?.textbook_id;
+        if (!statusTextbookId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Textbook ID is required" });
+          break;
+        }
+
+        /* Get total expected sections from the latest ingest job
+        const latestJob = await sqlConnection`
+          SELECT total_sections 
+          FROM jobs 
+          WHERE textbook_id = ${statusTextbookId} AND type = 'ingest_textbook' 
+          ORDER BY created_at DESC 
+          LIMIT 1
+        `;
+        const totalSections = latestJob.length > 0 ? latestJob[0].total_sections || 0 : 0;
+        */
+
+        // Get actual ingested sections count
+        const ingestedSectionsResult = await sqlConnection`
+          SELECT COUNT(*) as count FROM sections WHERE textbook_id = ${statusTextbookId}
+        `;
+        const ingestedSections = parseInt(ingestedSectionsResult[0].count) || 0;
+
+        // Get collection ID for this textbook
+        const collectionResult = await sqlConnection`
+          SELECT uuid FROM langchain_pg_collection WHERE name = ${statusTextbookId}
+        `;
+
+        let imageCount = 0;
+        let imagesList = [];
+
+        if (collectionResult.length > 0) {
+          const collectionId = collectionResult[0].uuid;
+
+          // Get unique images from langchain embeddings
+          // We deduplicate based on image src because multiple chunks in the same chapter
+          // will contain the same media metadata
+          const imagesListResult = await sqlConnection`
+              WITH all_images AS (
+                SELECT 
+                  jsonb_array_elements(cmetadata->'media'->'images') as img_data,
+                  cmetadata->>'chapter_number' as chapter_number,
+                  cmetadata->>'source_title' as chapter_title
+                FROM langchain_pg_embedding
+                WHERE collection_id = ${collectionId}
+                AND cmetadata->'media'->'images' IS NOT NULL
+              )
+              SELECT DISTINCT ON (img_data->>'src')
+                 img_data, chapter_number, chapter_title
+              FROM all_images
+            `;
+
+          imageCount = imagesListResult.length;
+
+          imagesList = imagesListResult.map((row) => ({
+            url: row.img_data.src,
+            alt: row.img_data.alt,
+            caption: row.img_data.caption,
+            chapter_number: row.chapter_number,
+            chapter_title: row.chapter_title,
+          }));
+        }
+
+        response.statusCode = 200;
+        response.body = JSON.stringify({
+          total_sections: ingestedSections,
+          ingested_sections: ingestedSections,
+          image_count: imageCount,
+          images: imagesList,
+        });
+        break;
+
       // POST /admin/textbooks/{textbook_id}/refresh - Trigger textbook re-ingestion
       case "POST /admin/textbooks/{textbook_id}/refresh":
         const refreshTextbookId = event.pathParameters?.textbook_id;
