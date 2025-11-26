@@ -5,8 +5,6 @@ import {
   MessageSquare,
   FileVideo,
   CheckCircle2,
-  PlayCircle,
-  FileAudio,
   ArrowLeft,
   BookOpen,
   Users,
