@@ -14,54 +14,56 @@ s3 = boto3.client(
 )
 
 def lambda_handler(event, context):
-    path = event.get('path', '')
-    
-    if '/view' in path:
-        return handle_view_request(event)
-    else:
-        return handle_upload_request(event)
-
-def handle_upload_request(event):
+    """
+    Generate pre-signed URLs for uploading files to S3
+    """
     query_params = event.get("queryStringParameters", {})
 
-    if not query_params:
+    if not query_params or not query_params.get("file_name"):
         return {
             'statusCode': 400,
             'headers': get_cors_headers(),
-            'body': json.dumps('Missing queries to generate pre-signed URL')
+            'body': json.dumps({'error': 'Missing file_name parameter'})
         }
 
     file_name = query_params.get("file_name", "")
+    content_type = query_params.get("content_type", "application/octet-stream")
 
-
-    key = f"Uploads/{file_name}"
+    # Create key with timestamp to avoid collisions
+    import time
+    timestamp = int(time.time())
+    key = f"uploads/{timestamp}_{file_name}"
 
     try:
         presigned_url = s3.generate_presigned_url(
             ClientMethod="put_object",
-            Params={"Bucket": BUCKET, "Key": key, "ContentType": file_type},
-            ExpiresIn=300,
+            Params={
+                "Bucket": BUCKET, 
+                "Key": key, 
+                "ContentType": content_type
+            },
+            ExpiresIn=300,  # 5 minutes
             HttpMethod="PUT",
         )
 
         return {
             "statusCode": 200,
             "headers": get_cors_headers(),
-            "body": json.dumps({"presignedurl": presigned_url, "key": key}),
+            "body": json.dumps({
+                "presignedUrl": presigned_url, 
+                "key": key,
+                "bucket": BUCKET
+            }),
         }
 
     except Exception as e:
+        print(f"Error generating presigned URL: {str(e)}")
         return {
             'statusCode': 500,
             'headers': get_cors_headers(),
-            'body': json.dumps('Internal server error')
+            'body': json.dumps({'error': 'Failed to generate presigned URL'})
         }
 
-
-def get_file_type(filename):
-    if '.' in filename:
-        return filename.split('.')[-1].lower()
-    return 'unknown'
 
 def get_cors_headers():
     return {

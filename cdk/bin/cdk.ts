@@ -81,6 +81,7 @@ const apiStack = new ApiGatewayStack(
   {
     env,
     ecrRepositories: cicdStack.ecrRepositories,
+    dataPipelineStack: dataPipelineStack,
   }
 );
 const amplifyStack = new AmplifyStack(app, `${StackPrefix}-Amplify`, apiStack, {

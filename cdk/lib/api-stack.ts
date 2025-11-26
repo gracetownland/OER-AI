@@ -10,6 +10,7 @@ import { Code, LayerVersion, Runtime } from "aws-cdk-lib/aws-lambda";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import { VpcStack } from "./vpc-stack";
 import { DatabaseStack } from "./database-stack";
+import { DataPipelineStack } from "./data-pipeline-stack";
 import * as apigatewayv2 from "aws-cdk-lib/aws-apigatewayv2";
 import { WebSocketLambdaIntegration } from "aws-cdk-lib/aws-apigatewayv2-integrations";
 import { Fn } from "aws-cdk-lib";
@@ -26,6 +27,7 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 
 interface ApiGatewayStackProps extends cdk.StackProps {
   ecrRepositories: { [key: string]: ecr.Repository };
+  dataPipelineStack: DataPipelineStack;
 }
 
 export class ApiGatewayStack extends cdk.Stack {
@@ -59,6 +61,8 @@ export class ApiGatewayStack extends cdk.Stack {
     props: ApiGatewayStackProps
   ) {
     super(scope, id, props);
+
+    const { dataPipelineStack } = props;
 
     this.layerList = {};
     /**
@@ -1515,5 +1519,62 @@ export class ApiGatewayStack extends cdk.Stack {
         ],
       })
     );
+
+    // Create Lambda function for generating pre-signed URLs
+    const presignedUrlRole = new iam.Role(this, `${id}-PresignedUrlRole`, {
+      roleName: `${id}-PresignedUrlRole`,
+      assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSLambdaBasicExecutionRole"
+        ),
+      ],
+    });
+
+    // Add explicit CloudWatch Logs permissions
+    presignedUrlRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ],
+        resources: [
+          `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/lambda/${id}-presigned-url-generator:*`,
+        ],
+      })
+    );
+
+    const presignedUrlFunction = new lambda.Function(
+      this,
+      `${id}-PresignedUrlFunction`,
+      {
+        functionName: `${id}-presigned-url-generator`,
+        runtime: lambda.Runtime.PYTHON_3_11,
+        handler: "generatePreSignedURL.lambda_handler",
+        code: lambda.Code.fromAsset("lambda/generatePresignedURL"),
+        timeout: Duration.seconds(60),
+        memorySize: 256,
+        role: presignedUrlRole,
+        environment: {
+          BUCKET: dataPipelineStack.csvBucket.bucketName,
+          REGION: this.region,
+        },
+      }
+    );
+
+    // Grant Lambda permissions to write to S3 bucket
+    dataPipelineStack.csvBucket.grantPut(presignedUrlFunction);
+
+    // Grant API Gateway permission to invoke the presigned URL function
+    presignedUrlFunction.grantInvoke(
+      new iam.ServicePrincipal("apigateway.amazonaws.com")
+    );
+
+    // Override logical ID to match OpenAPI definition
+    const cfnPresignedUrlFunction = presignedUrlFunction.node
+      .defaultChild as lambda.CfnFunction;
+    cfnPresignedUrlFunction.overrideLogicalId("presignedUrlFunction");
   }
 }
