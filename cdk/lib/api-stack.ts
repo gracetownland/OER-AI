@@ -1485,6 +1485,8 @@ export class ApiGatewayStack extends cdk.Stack {
           `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,
           // Titan embeddings model (for retrieval)
           `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+          // Cohere embeddings model (for retrieval)
+          `arn:aws:bedrock:us-east-1::foundation-model/cohere.embed-v4:0`,
         ],
       })
     );
