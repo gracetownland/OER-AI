@@ -1196,6 +1196,13 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks/*/chat_sessions*`,
     });
 
+    // Allow API Gateway to invoke for shared chat endpoints (public access)
+    lambdaChatSessionFunction.addPermission("AllowApiGatewayInvokeShared", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/chat_sessions*`,
+    });
+
     const cfnLambda_chatSession = lambdaChatSessionFunction.node
       .defaultChild as lambda.CfnFunction;
     cfnLambda_chatSession.overrideLogicalId("chatSessionFunction");
