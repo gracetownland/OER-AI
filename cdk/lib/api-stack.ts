@@ -1196,6 +1196,13 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/textbooks/*/chat_sessions*`,
     });
 
+    // Allow API Gateway to invoke for shared chat endpoints (public access)
+    lambdaChatSessionFunction.addPermission("AllowApiGatewayInvokeShared", {
+      principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
+      action: "lambda:InvokeFunction",
+      sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/chat_sessions*`,
+    });
+
     const cfnLambda_chatSession = lambdaChatSessionFunction.node
       .defaultChild as lambda.CfnFunction;
     cfnLambda_chatSession.overrideLogicalId("chatSessionFunction");
@@ -1503,6 +1510,8 @@ export class ApiGatewayStack extends cdk.Stack {
           `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,
           // Titan embeddings model (for retrieval)
           `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`,
+          // Cohere embeddings model (for retrieval)
+          `arn:aws:bedrock:us-east-1::foundation-model/cohere.embed-v4:0`,
         ],
       })
     );

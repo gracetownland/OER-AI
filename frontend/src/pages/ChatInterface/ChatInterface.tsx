@@ -218,7 +218,7 @@ export default function AIChatPage() {
       return; // No share parameter or already loaded
     }
 
-    const loadSharedChat = async () => {
+    const loadAndForkSharedChat = async () => {
       setIsLoadingSharedChat(true);
       setSharedChatError(null);
 
@@ -267,9 +267,11 @@ export default function AIChatPage() {
 
         const chatMessages: Message[] = [];
 
-        // Convert interactions to messages
-        data.interactions.forEach((interaction) => {
-          const baseTime = new Date(interaction.created_at).getTime();
+        // Convert interactions to messages - process in order
+        data.interactions.forEach((interaction, index) => {
+          // Use order_index if available, otherwise use array index
+          const orderValue = interaction.order_index ?? index;
+          const baseTime = orderValue * 1000; // Multiply by 1000 to create distinct timestamps
 
           // Add user message if query_text exists
           if (interaction.query_text) {
@@ -279,7 +281,6 @@ export default function AIChatPage() {
               text: interaction.query_text,
               sources_used: [],
               time: baseTime,
-              isFromSharedChat: true,
             });
           }
 
@@ -291,15 +292,42 @@ export default function AIChatPage() {
               text: interaction.response_text,
               sources_used: interaction.source_chunks || [],
               time: baseTime + 1,
-              isFromSharedChat: true,
             });
           }
         });
 
-        // Sort by creation time
+        // Sort by time to ensure proper order
         chatMessages.sort((a, b) => a.time - b.time);
 
         setMessages(chatMessages);
+
+        // Immediately fork the chat session
+        const forkResponse = await fetch(
+          `${import.meta.env.VITE_API_ENDPOINT}/chat_sessions/fork`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              source_chat_session_id: shareParam,
+              user_session_id: sessionUuid,
+              textbook_id: textbook?.id,
+            }),
+          }
+        );
+
+        if (!forkResponse.ok) {
+          throw new Error("Failed to fork chat session");
+        }
+
+        const forkData = await forkResponse.json();
+        const newChatSessionId = forkData.chat_session_id;
+
+        // Update state to reflect the forked chat
+        setHasForkedChat(true);
+        setActiveChatSessionId(newChatSessionId);
         setSharedChatSessionId(shareParam);
       } catch (error) {
         console.error("Failed to load shared chat:", error);
@@ -317,8 +345,16 @@ export default function AIChatPage() {
       }
     };
 
-    loadSharedChat();
-  }, [searchParams, sharedChatSessionId, setSearchParams]);
+    loadAndForkSharedChat();
+  }, [
+    searchParams,
+    sharedChatSessionId,
+    textbook?.id,
+    sessionUuid,
+    setSearchParams,
+    setActiveChatSessionId,
+    refreshChatSessions,
+  ]);
 
   // Load chat history and redirect if no chat session ID
   useEffect(() => {
@@ -369,8 +405,10 @@ export default function AIChatPage() {
         const chatMessages: Message[] = [];
 
         // Each interaction contains both user query and AI response
-        data.interactions.forEach((interaction) => {
-          const baseTime = new Date(interaction.created_at).getTime();
+        // Process in order - backend already sorts by order_index
+        data.interactions.forEach((interaction, index) => {
+          // Use index to create distinct timestamps that preserve order
+          const baseTime = index * 1000;
 
           // Add user message if query_text exists
           if (interaction.query_text) {
@@ -395,7 +433,7 @@ export default function AIChatPage() {
           }
         });
 
-        // Sort by creation time
+        // Sort by time to ensure proper order
         chatMessages.sort((a, b) => a.time - b.time);
 
         setMessages(chatMessages);

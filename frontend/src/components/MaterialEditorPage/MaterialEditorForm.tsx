@@ -66,7 +66,8 @@ interface MaterialEditorFormProps {
 }
 
 export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
-  const [currentMaterialType, setCurrentMaterialType] = useState<
+  // const [currentMaterialType, setCurrentMaterialType] = useState<
+  const [, setCurrentMaterialType] = useState<
     "mcq" | "flashcards" | "shortAnswer"
   >("mcq");
 
