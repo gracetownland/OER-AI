@@ -79,7 +79,7 @@ exports.handler = async (event) => {
 
         const result = await sqlConnection`
           SELECT 
-            id, title, authors, publisher, publish_date, summary, language, level, created_at,
+            id, title, authors, publisher, publish_date, summary, language, level, textbook_logo_url, created_at,
             COUNT(*) OVER() as total_count
           FROM textbooks
           WHERE status = 'Active'
