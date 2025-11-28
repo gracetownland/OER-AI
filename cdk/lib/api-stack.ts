@@ -62,8 +62,6 @@ export class ApiGatewayStack extends cdk.Stack {
   ) {
     super(scope, id, props);
 
-    const { dataPipelineStack } = props;
-
     this.layerList = {};
     /**
      *
@@ -685,6 +683,7 @@ export class ApiGatewayStack extends cdk.Stack {
       this,
       `${id}-PresignedUrlFunction`,
       {
+        functionName: `${id}-presigned-url-generator`,
         runtime: lambda.Runtime.PYTHON_3_11,
         code: lambda.Code.fromAsset("lambda/generatePresignedURL"),
         handler: "generatePreSignedURL.lambda_handler",
@@ -1572,36 +1571,5 @@ export class ApiGatewayStack extends cdk.Stack {
         ],
       })
     );
-
-    const presignedUrlFunction = new lambda.Function(
-      this,
-      `${id}-PresignedUrlFunction`,
-      {
-        functionName: `${id}-presigned-url-generator`,
-        runtime: lambda.Runtime.PYTHON_3_11,
-        handler: "generatePreSignedURL.lambda_handler",
-        code: lambda.Code.fromAsset("lambda/generatePresignedURL"),
-        timeout: Duration.seconds(60),
-        memorySize: 256,
-        role: presignedUrlRole,
-        environment: {
-          BUCKET: dataPipelineStack.csvBucket.bucketName,
-          REGION: this.region,
-        },
-      }
-    );
-
-    // Grant Lambda permissions to write to S3 bucket
-    dataPipelineStack.csvBucket.grantPut(presignedUrlFunction);
-
-    // Grant API Gateway permission to invoke the presigned URL function
-    presignedUrlFunction.grantInvoke(
-      new iam.ServicePrincipal("apigateway.amazonaws.com")
-    );
-
-    // Override logical ID to match OpenAPI definition
-    const cfnPresignedUrlFunction = presignedUrlFunction.node
-      .defaultChild as lambda.CfnFunction;
-    cfnPresignedUrlFunction.overrideLogicalId("presignedUrlFunction");
   }
 }
