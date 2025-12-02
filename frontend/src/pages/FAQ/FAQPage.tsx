@@ -110,7 +110,7 @@ export default function FAQPage() {
             Frequently Asked Questions
           </h1>
           <p className="text-muted-foreground max-w-3xl mx-auto">
-            If you find a question here that violates our <a href="/guidelines" target="_blank" rel="noopener noreferrer" aria-label="User Guidelines (opens in a new tab)" className="underline text-primary hover:text-primary/80">User Guidelines<span aria-hidden="true" className="ml-1">↗</span></a> (e.g., uses offensive language, promotes illegal activities, or is harmful), please report it.
+            If you find a question here that violates our <a href="/guidelines" target="_blank" rel="noopener noreferrer" aria-label="User Guidelines (opens in a new tab)" className="underline text-primary hover:text-primary/80">User Guidelines</a> (e.g., uses offensive language, promotes illegal activities, or is harmful), please report it.
           </p>
           {loading && (
             <p className="text-muted-foreground mt-4">Loading FAQs...</p>
