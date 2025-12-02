@@ -528,7 +528,9 @@ export default function TextbookManagement() {
                   <TableHead>Status</TableHead>
                   <TableHead>Users</TableHead>
                   <TableHead>Questions</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Re-ingest</TableHead>
+                  <TableHead>Delete</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -598,43 +600,43 @@ export default function TextbookManagement() {
                       <TableCell className="text-gray-600">
                         {book.questions}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <div className="flex items-center gap-2 mr-2">
-                            <span className="text-xs text-gray-400 hidden sm:inline">
-                              {book.status === "Active"
-                                ? "Enabled"
-                                : "Disabled"}
-                            </span>
-                            <Switch
-                              checked={book.status === "Active"}
-                              onCheckedChange={() => toggleStatus(book.id)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-gray-400 hover:text-[#2c5f7c]"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRefresh(book.id);
-                            }}
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-gray-400 hover:text-red-600"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(book.id);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                      <TableCell>
+                        <div className="flex items-center gap-2 mr-2">
+                          <span className="text-xs text-gray-400 hidden sm:inline">
+                            {book.status === "Active" ? "Enabled" : "Disabled"}
+                          </span>
+                          <Switch
+                            checked={book.status === "Active"}
+                            onCheckedChange={() => toggleStatus(book.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-gray-400 hover:text-[#2c5f7c]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefresh(book.id);
+                          }}
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-gray-400 hover:text-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(book.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))

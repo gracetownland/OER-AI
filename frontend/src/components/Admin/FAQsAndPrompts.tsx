@@ -465,7 +465,9 @@ export default function FAQsAndPrompts() {
                     <TableHead className="w-[40%]">Question & Answer</TableHead>
                     <TableHead>Usage</TableHead>
                     <TableHead>Reported Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">
+                      Dismiss / Delete
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -551,7 +553,9 @@ export default function FAQsAndPrompts() {
                     <TableHead className="w-[40%]">Prompt Details</TableHead>
                     <TableHead>Visibility</TableHead>
                     <TableHead>Created Date</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="text-right">
+                      Dismiss / Delete
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -669,7 +673,7 @@ export default function FAQsAndPrompts() {
                   <TableHead className="w-[35%]">Description</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Visibility</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="text-right">Edit / Delete</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
