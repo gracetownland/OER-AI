@@ -220,32 +220,35 @@ export class DatabaseStack extends Stack {
     // 1. Rotation for admin credentials (single-user strategy)
     const adminSecretForRotation = secretmanager.Secret.fromSecretNameV2(
       this,
-      "AdminSecretForRotation",
+      "AdminSecretRotation",
       this.secretPathAdminName
     );
 
-    adminSecretForRotation.addRotationSchedule("AdminRotation", {
+    adminSecretForRotation.addRotationSchedule("AdminRot", {
       automaticallyAfter: Duration.days(30), // Rotate every 30 days
       hostedRotation: secretsmanager.HostedRotation.postgreSqlSingleUser({
         vpc: vpcStack.vpc,
+        functionName: `${id}-AdminRotation`,
       }),
     });
 
     // 2. Rotation for application user credentials (multi-user strategy)
-    this.secretPathUser.addRotationSchedule("UserRotation", {
+    this.secretPathUser.addRotationSchedule("AppUserRot", {
       automaticallyAfter: Duration.days(30),
       hostedRotation: secretsmanager.HostedRotation.postgreSqlMultiUser({
         vpc: vpcStack.vpc,
         masterSecret: adminSecretForRotation,
+        functionName: `${id}-AppUserRotation`,
       }),
     });
 
     // 3. Rotation for table creator credentials (multi-user strategy)
-    this.secretPathTableCreator.addRotationSchedule("TableCreatorRotation", {
+    this.secretPathTableCreator.addRotationSchedule("TableCreatorRot", {
       automaticallyAfter: Duration.days(30),
       hostedRotation: secretsmanager.HostedRotation.postgreSqlMultiUser({
         vpc: vpcStack.vpc,
         masterSecret: adminSecretForRotation,
+        functionName: `${id}-TableCreatorRotation`,
       }),
     });
 
