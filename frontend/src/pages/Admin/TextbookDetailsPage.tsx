@@ -25,7 +25,6 @@ import {
   BarChart,
   Bar,
   Cell,
-  Legend,
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -415,6 +414,18 @@ export default function TextbookDetailsPage() {
 
   const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
 
+  const formatMaterialType = (type: string) => {
+    const map: Record<string, string> = {
+      short_answer: "Short Answer",
+      flashcard: "Flashcards",
+      mcq: "Multiple Choice",
+    };
+    return (
+      map[type] ||
+      type.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       {/* Header */}
@@ -561,6 +572,7 @@ export default function TextbookDetailsPage() {
                         value={totalUsersPeriod.toString()}
                         icon={<Users className="h-5 w-5 text-blue-600" />}
                         trend="in selected period"
+                        tooltip="Number of unique users who have interacted with this textbook during the selected time range."
                       />
                       <MetricCard
                         title="Questions Asked"
@@ -569,6 +581,7 @@ export default function TextbookDetailsPage() {
                           <MessageSquare className="h-5 w-5 text-purple-600" />
                         }
                         trend="in selected period"
+                        tooltip="Total number of questions asked by users about this textbook during the selected time range."
                       />
                     </div>
 
@@ -689,18 +702,26 @@ export default function TextbookDetailsPage() {
                         value={practiceAnalytics.total_generated.toString()}
                         icon={<BookOpen className="h-5 w-5 text-blue-600" />}
                         trend="Total practice sets"
+                        tooltip="Total number of practice material sets generated for this textbook."
                       />
                       <MetricCard
                         title="Most Popular Type"
                         value={
                           practiceAnalytics.by_type.sort(
                             (a, b) => b.count - a.count
-                          )[0]?.material_type || "N/A"
+                          )[0]
+                            ? formatMaterialType(
+                                practiceAnalytics.by_type.sort(
+                                  (a, b) => b.count - a.count
+                                )[0].material_type
+                              )
+                            : "N/A"
                         }
                         icon={
                           <CheckCircle2 className="h-5 w-5 text-green-600" />
                         }
                         trend="By volume"
+                        tooltip="The type of practice material (e.g., Flashcards, MCQ) that has been generated the most."
                       />
                       <MetricCard
                         title="Most Popular Difficulty"
@@ -713,6 +734,7 @@ export default function TextbookDetailsPage() {
                           <AlertTriangle className="h-5 w-5 text-orange-600" />
                         }
                         trend="By volume"
+                        tooltip="The difficulty level that has been selected most frequently for practice materials."
                       />
                     </div>
 
@@ -727,11 +749,17 @@ export default function TextbookDetailsPage() {
                               strokeDasharray="3 3"
                               vertical={false}
                             />
-                            <XAxis dataKey="material_type" />
+                            <XAxis
+                              dataKey="material_type"
+                              tickFormatter={formatMaterialType}
+                            />
                             <YAxis />
-                            <Tooltip content={<CustomTooltip />} />
+                            <Tooltip
+                              content={<CustomTooltip />}
+                              labelFormatter={formatMaterialType}
+                            />
                             <Bar dataKey="count" fill="#2c5f7c">
-                              {practiceAnalytics.by_type.map((entry, index) => (
+                              {practiceAnalytics.by_type.map((__, index) => (
                                 <Cell
                                   key={`cell-${index}`}
                                   fill={COLORS[index % COLORS.length]}
@@ -757,7 +785,7 @@ export default function TextbookDetailsPage() {
                             <Tooltip content={<CustomTooltip />} />
                             <Bar dataKey="count" fill="#82ca9d">
                               {practiceAnalytics.by_difficulty.map(
-                                (entry, index) => (
+                                (__, index) => (
                                   <Cell
                                     key={`cell-${index}`}
                                     fill={COLORS[index % COLORS.length]}
@@ -784,7 +812,7 @@ export default function TextbookDetailsPage() {
                                 </p>
                                 <div className="flex gap-2 mt-1">
                                   <Badge variant="outline" className="text-xs">
-                                    {activity.material_type}
+                                    {formatMaterialType(activity.material_type)}
                                   </Badge>
                                   <Badge
                                     variant="secondary"
@@ -961,12 +989,14 @@ export default function TextbookDetailsPage() {
                         ? "Fully Ingested"
                         : "In Progress"
                     }
+                    tooltip="Number of sections successfully processed and indexed out of the total sections found in the textbook."
                   />
                   <MetricCard
                     title="Images Ingested"
                     value={(ingestionStatus?.image_count || 0).toString()}
                     icon={<FileVideo className="h-5 w-5 text-blue-600" />}
                     trend="Total images found"
+                    tooltip="Total number of images extracted from the textbook content and indexed."
                   />
                 </div>
 
