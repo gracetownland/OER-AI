@@ -478,6 +478,86 @@ exports.handler = async (event) => {
         response.body = JSON.stringify({ prompts: sharedPrompts });
         break;
 
+      // GET /admin/analytics/practice - Get aggregated practice material analytics
+      case "GET /admin/analytics/practice":
+        // Get total count
+        const totalPracticeAggResult = await sqlConnection`
+          SELECT COUNT(*) as count 
+          FROM practice_material_analytics
+        `;
+        const totalPracticeAgg = parseInt(totalPracticeAggResult[0].count) || 0;
+
+        // Get count by type
+        const typeBreakdownAgg = await sqlConnection`
+          SELECT material_type, COUNT(*) as count
+          FROM practice_material_analytics
+          GROUP BY material_type
+        `;
+
+        response.statusCode = 200;
+        response.body = JSON.stringify({
+          total_generated: totalPracticeAgg,
+          by_type: typeBreakdownAgg,
+        });
+        break;
+
+      // GET /admin/textbooks/{textbook_id}/practice_analytics - Get practice material analytics
+      case "GET /admin/textbooks/{textbook_id}/practice_analytics":
+        const practiceTextbookId = event.pathParameters?.textbook_id;
+        if (!practiceTextbookId) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "Textbook ID is required" });
+          break;
+        }
+
+        // Get total count
+        const totalPracticeResult = await sqlConnection`
+          SELECT COUNT(*) as count 
+          FROM practice_material_analytics 
+          WHERE textbook_id = ${practiceTextbookId}
+        `;
+        const totalPractice = parseInt(totalPracticeResult[0].count) || 0;
+
+        // Get count by type
+        const typeBreakdown = await sqlConnection`
+          SELECT material_type, COUNT(*) as count
+          FROM practice_material_analytics
+          WHERE textbook_id = ${practiceTextbookId}
+          GROUP BY material_type
+        `;
+
+        // Get count by difficulty
+        const difficultyBreakdown = await sqlConnection`
+          SELECT difficulty, COUNT(*) as count
+          FROM practice_material_analytics
+          WHERE textbook_id = ${practiceTextbookId}
+          GROUP BY difficulty
+        `;
+
+        // Get recent generations
+        const recentGenerations = await sqlConnection`
+          SELECT 
+            id,
+            material_type,
+            topic,
+            num_items,
+            difficulty,
+            created_at
+          FROM practice_material_analytics
+          WHERE textbook_id = ${practiceTextbookId}
+          ORDER BY created_at DESC
+          LIMIT 20
+        `;
+
+        response.statusCode = 200;
+        response.body = JSON.stringify({
+          total_generated: totalPractice,
+          by_type: typeBreakdown,
+          by_difficulty: difficultyBreakdown,
+          recent_activity: recentGenerations,
+        });
+        break;
+
       // GET /admin/textbooks/{textbook_id}/ingestion_status - Get detailed ingestion status
       case "GET /admin/textbooks/{textbook_id}/ingestion_status":
         const statusTextbookId = event.pathParameters?.textbook_id;
@@ -1056,6 +1136,68 @@ exports.handler = async (event) => {
           response.statusCode = 500;
           response.body = JSON.stringify({
             error: "Failed to update token limit",
+          });
+        }
+        break;
+
+      // GET /admin/settings/system-prompt - Get system prompt
+      case "GET /admin/settings/system-prompt":
+        try {
+          const result = await sqlConnection`
+            SELECT value FROM system_settings WHERE key = 'system_prompt'
+          `;
+
+          const systemPrompt = result.length > 0 ? result[0].value : "";
+
+          response.statusCode = 200;
+          response.body = JSON.stringify({
+            systemPrompt: systemPrompt,
+          });
+        } catch (error) {
+          console.error("Error getting system prompt:", error);
+          response.statusCode = 500;
+          response.body = JSON.stringify({
+            error: "Failed to get system prompt",
+          });
+        }
+        break;
+
+      // PUT /admin/settings/system-prompt - Update system prompt
+      case "PUT /admin/settings/system-prompt":
+        let promptData;
+        try {
+          promptData = parseBody(event.body);
+        } catch (error) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: error.message });
+          break;
+        }
+
+        const { systemPrompt } = promptData;
+
+        if (systemPrompt === undefined || systemPrompt === null) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: "systemPrompt is required" });
+          break;
+        }
+
+        try {
+          await sqlConnection`
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES ('system_prompt', ${systemPrompt}, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+          `;
+
+          response.statusCode = 200;
+          response.body = JSON.stringify({
+            message: "System prompt updated successfully",
+            systemPrompt: String(systemPrompt),
+          });
+        } catch (error) {
+          console.error("Error updating system prompt:", error);
+          response.statusCode = 500;
+          response.body = JSON.stringify({
+            error: "Failed to update system prompt",
           });
         }
         break;

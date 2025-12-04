@@ -2,6 +2,7 @@ import os
 import json
 import logging
 import boto3
+import psycopg2
 from typing import Any, Dict
 
 from helpers.vectorstore import get_textbook_retriever
@@ -82,7 +83,7 @@ def initialize_constants():
         )
     
     if _llm is None:
-        # Create bedrock client for LLM in the appropriate region
+        # Create bedrock client for LLM in the appropriate region (easter egg 2)
         llm_client = boto3.client("bedrock-runtime", region_name=_bedrock_region)
         model_kwargs = {
             "temperature": 0.6,
@@ -301,6 +302,72 @@ def extract_sources_from_docs(docs) -> list[str]:
                     source_entry += f" (p. {page})"
                 sources_used.append(source_entry)
     return sources_used
+
+
+def track_practice_material_analytics(
+    textbook_id: str,
+    material_type: str,
+    topic: str,
+    num_items: int,
+    difficulty: str,
+    metadata: Dict[str, Any],
+    user_session_id: str = None
+):
+    """
+    Insert a record into practice_material_analytics table to track generation.
+    
+    Args:
+        textbook_id: UUID of the textbook
+        material_type: Type of material ('mcq', 'flashcards', 'shortAnswer')
+        topic: User-provided topic
+        num_items: Number of questions/cards generated
+        difficulty: Difficulty level ('beginner', 'intermediate', 'advanced')
+        metadata: Additional type-specific details (numOptions, cardType, etc.)
+        user_session_id: Optional user session UUID
+    """
+    try:
+        # Get database credentials
+        db = get_secret_dict(SM_DB_CREDENTIALS)
+        
+        # Connect to database
+        conn = psycopg2.connect(
+            dbname=db["dbname"],
+            user=db["username"],
+            password=db["password"],
+            host=RDS_PROXY_ENDPOINT,
+            port=db["port"]
+        )
+        
+        cursor = conn.cursor()
+        
+        # Insert analytics record
+        cursor.execute(
+            """
+            INSERT INTO practice_material_analytics 
+            (textbook_id, user_session_id, material_type, topic, num_items, difficulty, metadata)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                textbook_id,
+                user_session_id,
+                material_type,
+                topic,
+                num_items,
+                difficulty,
+                json.dumps(metadata)
+            )
+        )
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        
+        logger.info(f"Analytics tracked: {material_type} for textbook {textbook_id}")
+        
+    except Exception as e:
+        logger.error(f"Failed to track analytics: {e}")
+        # Don't fail the request if analytics tracking fails
+        pass
 
 
 def parse_body(body: str | None) -> Dict[str, Any]:
@@ -614,6 +681,48 @@ def handler(event, context):
             **result,
             "sources_used": sources_used
         }
+        
+        # Track analytics (async, non-blocking)
+        try:
+            # Prepare metadata based on material type
+            analytics_metadata = {}
+            if material_type == "mcq":
+                analytics_metadata = {
+                    "numOptions": num_options,
+                    "numQuestions": num_questions
+                }
+            elif material_type == "flashcard":
+                analytics_metadata = {
+                    "cardType": card_type,
+                    "numCards": num_cards
+                }
+            else:  # short_answer
+                analytics_metadata = {
+                    "numQuestions": num_questions
+                }
+            
+            # Get user_session_id from query parameters if available
+            query_params = event.get("queryStringParameters") or {}
+            user_session_id = query_params.get("user_session_id")
+            
+            # Determine num_items based on material type
+            if material_type == "flashcard":
+                num_items_generated = num_cards
+            else:
+                num_items_generated = num_questions
+            
+            # Track the generation
+            track_practice_material_analytics(
+                textbook_id=textbook_id,
+                material_type=material_type,
+                topic=topic,
+                num_items=num_items_generated,
+                difficulty=difficulty,
+                metadata=analytics_metadata,
+                user_session_id=user_session_id
+            )
+        except Exception as analytics_error:
+            logger.warning(f"Analytics tracking failed but continuing: {analytics_error}")
         
         return {
             "statusCode": 200,

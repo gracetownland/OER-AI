@@ -360,18 +360,21 @@ export default function TextbookManagement() {
           value={loading ? "..." : totalUsers.toString()}
           icon={<Users className="h-5 w-5 text-[#2c5f7c]" />}
           trend="Unique users with chat sessions"
+          tooltip="Calculated by summing the user count from each textbook."
         />
         <MetricCard
           title="Total Questions"
           value={loading ? "..." : totalQuestions.toLocaleString()}
           icon={<HelpCircle className="h-5 w-5 text-[#3d7a9a]" />}
           trend="Questions asked across all textbooks"
+          tooltip="Calculated by summing the question count from each textbook."
         />
         <MetricCard
           title="Total Textbooks"
           value={loading ? "..." : textbooks.length.toString()}
           icon={<FileText className="h-5 w-5 text-[#2c5f7c]" />}
           trend="Active textbooks in the system"
+          tooltip="Total count of textbooks currently registered in the system."
         />
       </div>
 
@@ -528,7 +531,9 @@ export default function TextbookManagement() {
                   <TableHead>Status</TableHead>
                   <TableHead>Users</TableHead>
                   <TableHead>Questions</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Re-ingest</TableHead>
+                  <TableHead>Delete</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -598,43 +603,43 @@ export default function TextbookManagement() {
                       <TableCell className="text-gray-600">
                         {book.questions}
                       </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-3">
-                          <div className="flex items-center gap-2 mr-2">
-                            <span className="text-xs text-gray-400 hidden sm:inline">
-                              {book.status === "Active"
-                                ? "Enabled"
-                                : "Disabled"}
-                            </span>
-                            <Switch
-                              checked={book.status === "Active"}
-                              onCheckedChange={() => toggleStatus(book.id)}
-                              onClick={(e) => e.stopPropagation()}
-                            />
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-gray-400 hover:text-[#2c5f7c]"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRefresh(book.id);
-                            }}
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-gray-400 hover:text-red-600"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(book.id);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                      <TableCell>
+                        <div className="flex items-center gap-2 mr-2">
+                          <span className="text-xs text-gray-400 hidden sm:inline">
+                            {book.status === "Active" ? "Enabled" : "Disabled"}
+                          </span>
+                          <Switch
+                            checked={book.status === "Active"}
+                            onCheckedChange={() => toggleStatus(book.id)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-gray-400 hover:text-[#2c5f7c]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRefresh(book.id);
+                          }}
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-gray-400 hover:text-red-600"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(book.id);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))
