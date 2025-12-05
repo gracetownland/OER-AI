@@ -93,20 +93,20 @@ Switch to Instructor mode via the Mode selector (top header). Instructors have a
 Administrators log in via `/admin/login` and perform ingestion, metadata, moderation, and system configuration tasks.
 
 ### Textbook Management & Ingestion
-
+![admin_dashboard](./media/admin_dashboard.png)
 - View ingestion status, job history, and content ingestion statistics in the Textbooks page.
-- Add or update textbook metadata and trigger re-ingestion when necessary (depending on your deployment). Some installations may allow you to upload files directly; others use a source URL.
-
+- Add or update textbook metadata and trigger re-ingestion when necessary
+![textbook_ingestion](./media/textbook_ingestion.png)
 ### AI System & Operational Settings
-
+![ai_settings](./media/ai_settings.png)
 - Manage the system prompt, set token limits, and update operational settings in AI Settings.
 
 ### Analytics
-
+![textbook_info](./media/textbook_info.png)
 - Console shows usage and activity metrics such as chat counts, prompt usage, and practice generation activity.
 
 ### Reported Content & Moderation
-
+![reported_content](./media/reported_faq_and_prompts.png)
 - Review reported items for FAQ and shared prompts; each report includes optional user comments.
 - Actions available: dismiss a report or delete the flagged item.
 
@@ -115,7 +115,7 @@ Administrators log in via `/admin/login` and perform ingestion, metadata, modera
 ## Reporting & Moderation Flow
 
 - Shared Prompts use an inline Flag control for reporting (opens a dialog for optional comments).
-- FAQ entries use the action menu to report content (opens a report dialog).
+- FAQ entries uses an inline flag control for reporting.
 - Admins receive reports in the Admin dashboard under Reported Items.
 
 ---
@@ -140,4 +140,4 @@ Best practices:
 
 - [Deployment Guide](./DEPLOYMENT_GUIDE.md)
 - [Architecture Documentation](./ARCHITECTURE.md)
-- API Documentation: available at your API Gateway endpoint (if applicable)
+- [API Documentation](./API_DOCUMENTATION.pdf)
