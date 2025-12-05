@@ -16,43 +16,38 @@ This document summarizes the main user flows, UI controls, and administrative ac
 ## Getting Started
 
 1. Open the hosted site (Amplify URL provided in the deployment process) or run the frontend locally.
-2. Click **Sign Up** to register an account (Cognito-backed sign up flow).
-3. Verify your email with the code sent to your inbox.
-4. Sign in with your credentials.
-
-Notes:
-- After first login you will be assigned a regular user role (Student) by default.
-- Admin roles are provisioned via Cognito user group membership or by an existing admin.
-- If the app uses SSO or pre-provisioned accounts, follow the admin instructions for onboarding.
-
 ---
 
 ## Student View
+![image](./media/landing_page.png)
 
 This is the default experience and contains: textbook catalog, Chat (Study Companion), FAQ, Practice Materials, Shared Prompts, and audio accessibility settings.
 
 ### Home / Textbook Catalog
 
+![textbook_catalogue](./media/textbook_catalogue.png)
 - Browse textbook cards with title, author, and cover image. Use the search bar to find textbooks by title or author.
 - Click a textbook to view the textbook dashboard, which includes Chat, FAQ, Practice, and (for instructors) Material Editor.
-
 ### Chat (Study Companion)
-
-- Open the Sidebar to select existing chat sessions or create a new session with the **+** button.
+![chat_window](./media/chat_window.png)
+- In the sidebar a user can select existing chat sessions or create a new session with the **+** button.
 - Type messages into the Chat input; press **Enter** to send (Shift+Enter inserts a newline).
 - Responses stream as the model generates them and may contain sources (citations) displayed below the reply.
+![chat_response](./media/AI_response.png)
 - The Chat supports prompt templates and guided prompts — open the Prompt Library to browse or apply templates.
+
 - Session data is stored in localStorage and is valid for approximately 30 days; sessions are temporary and not a durable storage mechanism.
 
-Sharing & forked sessions:
+Sharing chats:
+![share_chat](./media/share_chat_message.png)
 - Use the **Share** button to generate a public URL for the conversation. A privacy notice will appear before proceeding; you can dismiss it permanently using localStorage.
-- If you open a shared chat URL (`?share=<SESSION_ID>`), you can preview and optionally fork the conversation into your own session.
+- If you open a shared chat URL, you can preview and optionally fork the conversation into your own chat session.
 
 ### FAQ
-
+![faq](./media/faq_page.png)
 - The FAQ for each textbook lists commonly asked questions and the canonical answer.
 - Clicking a FAQ loads it as a pre-filled question into the Chat UI and increments its usage count.
-- To report an FAQ, open the FAQ card's action menu (three dots) and choose Report; a dialog appears to submit a reason or comment.
+- To report an FAQ, click the flag icon on the FAQ Card.
 
 ### Practice Materials
 
