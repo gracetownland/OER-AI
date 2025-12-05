@@ -7,16 +7,14 @@
   - [Request Higher Bedrock LLM Invocation Quotas](#request-higher-bedrock-llm-invocation-quotas)
 - [Pre-Deployment](#pre-deployment)
   - [Create GitHub Personal Access Token](#create-github-personal-access-token)
-  - [Enable Models in Bedrock](#enable-models-in-bedrock)
 - [Deployment](#deployment)
   - [Step 1: Fork \& Clone The Repository](#step-1-fork--clone-the-repository)
   - [Step 2: Upload Secrets](#step-2-upload-secrets)
   - [Step 3: CDK Deployment](#step-3-cdk-deployment)
 - [Post-Deployment](#post-deployment)
-  - [Step 1: Run Database Migrations](#step-1-run-database-migrations)
-  - [Step 2: Build AWS Amplify App](#step-2-build-aws-amplify-app)
-  - [Step 3: Configure Admin User](#step-3-configure-admin-user)
-  - [Step 4: Visit Web App](#step-4-visit-web-app)
+  - [Step 1: Build AWS Amplify App](#step-1-build-aws-amplify-app)
+  - [Step 2: Configure Admin User](#step-2-configure-admin-user)
+  - [Step 3: Visit Web App](#step-3-visit-web-app)
 - [Troubleshooting](#troubleshooting)
   - [Common Issues](#common-issues)
 - [Cleanup](#cleanup)
@@ -44,8 +42,7 @@ To request quota increases:
 2. Search for "Bedrock" in the service quotas
 3. Select the relevant LLM models you plan to use:
    - Meta Llama 3 70B Instruct
-   - Amazon Titan Embed Text V2
-   - Cohere Embed V4 (if using Cohere embeddings)
+   - Cohere Embed V4
 4. Request quota increases for "Requests per minute" based on your expected usage
 5. Submit the quota increase request and wait for AWS approval (this can take 24-48 hours)
 
@@ -60,25 +57,6 @@ To deploy this solution, you will need to generate a GitHub personal access toke
 _Note: when selecting the scopes to grant the token (step 8 of the instruction), make sure you select `repo` scope._
 
 **Once you create a token, please note down its value as you will use it later in the deployment process.**
-
-### Enable Models in Bedrock
-
-First, navigate to Amazon Bedrock in the AWS Console. From the home page, click on model access under Bedrock configurations.
-
-Then click on "Modify model access" and enable the relevant models. Click next and on the next page click submit. 
-
-The following models are required for this project:
-
-**Required Models:**
-- **Amazon Titan Embeddings V2** (for document embeddings)
-- **Meta Llama 3 70B Instruct** (primary text generation model)
-
-**Optional Models** (for additional functionality):
-- **Cohere Embed V4** (alternative embedding model)
-- **Claude 3 Sonnet** (alternative text generation model)
-- **Mistral Large** (alternative text generation model)
-
-The relevant models are now enabled in Bedrock.
 
 ## Deployment
 
@@ -95,13 +73,13 @@ Now let's clone the GitHub repository onto your machine. To do this:
 3. Clone the GitHub repository by entering the following command. Be sure to replace `<YOUR-GITHUB-USERNAME>` with your own username.
 
 ```bash
-git clone https://github.com/<YOUR-GITHUB-USERNAME>/OER-AI-Assistant.git
+git clone https://github.com/<YOUR-GITHUB-USERNAME>/OER-AI
 ```
 
 The code should now be in the folder you created. Navigate into the root folder containing the entire codebase by running the command:
 
 ```bash
-cd OER-AI-Assistant
+cd OER-AI
 ```
 
 #### Install Dependencies
@@ -270,8 +248,6 @@ It's time to set up everything that goes on behind the scenes! For more informat
 
 Open a terminal in the `/cdk` directory.
 
-**Download Requirements**: Install requirements with npm by running `npm install` command.
-
 **Initialize the CDK stack** (required only if you have not deployed any resources with CDK in this region before). Please replace `<YOUR-PROFILE-NAME>` with the appropriate AWS profile used earlier.
 
 ```bash
@@ -283,15 +259,14 @@ cdk bootstrap aws://<YOUR_AWS_ACCOUNT_ID>/<YOUR_ACCOUNT_REGION> --profile <YOUR-
 
 You may run the following command to deploy the stacks all at once. Again, replace `<YOUR-PROFILE-NAME>` with the appropriate AWS profile used earlier. Also replace `<YOUR-STACK-PREFIX>` with the appropriate stack prefix.
 
-The stack prefix will be prefixed onto the physical names of the resources created during deployment. The `environment` parameter specifies the deployment environment (dev, test, prod), and the `version` parameter indicates the application version being deployed.
+The stack prefix will be prefixed onto the physical names of the resources created during deployment. The `environment` parameter specifies the deployment environment (dev, test, prod), the `version` parameter indicates the application version being deployed, and the `githubRepo` parameter should match your forked repository name.
 
 ```bash
 cdk deploy --all \
-  --parameters <YOUR-STACK-PREFIX>-Amplify:githubRepoName=OER-AI-Assistant \
   --context StackPrefix=<YOUR-STACK-PREFIX> \
   --context environment=dev \
   --context version=1.0.0 \
-  --context githubRepo=OER-AI-Assistant \
+  --context githubRepo=OER-AI \
   --profile <YOUR-PROFILE-NAME>
 ```
 
@@ -299,11 +274,10 @@ For example:
 
 ```bash
 cdk deploy --all \
-  --parameters OER-Amplify:githubRepoName=OER-AI-Assistant \
   --context StackPrefix=OER \
   --context environment=dev \
   --context version=1.0.0 \
-  --context githubRepo=OER-AI-Assistant \
+  --context githubRepo=OER-AI \
   --profile my-aws-profile
 ```
 
@@ -311,31 +285,16 @@ cdk deploy --all \
 
 ## Post-Deployment
 
-### Step 1: Run Database Migrations
-
-After the CDK deployment completes, the database migrations should run automatically via the DBFlow Lambda function. However, you can verify the migrations were successful:
-
-1. Navigate to **AWS Lambda** in the AWS Console
-2. Find the Lambda function named `<STACK-PREFIX>-DBFlowFunction`
-3. Check the CloudWatch Logs to verify migrations completed successfully
-4. Look for log entries indicating successful migration execution
-
-If migrations did not run automatically, you can trigger them manually:
-
-1. Go to the Lambda function `<STACK-PREFIX>-DBFlowFunction`
-2. Click "Test" and create a test event (the payload doesn't matter)
-3. Execute the test to run migrations
-
-### Step 2: Build AWS Amplify App
+### Step 1: Build AWS Amplify App
 
 1. Log in to AWS console, and navigate to **AWS Amplify**. You can do so by typing `Amplify` in the search bar at the top.
-2. From `All apps`, click `<STACK-PREFIX>-Amplify`.
-3. Then click `main` under `branches`
+2. From `All apps`, click `<STACK-PREFIX>-amplify`.
+3. You will see multiple branches listed (`main`, `dev`, `api_endpoint_setup`). Click on the branch that corresponds to your GitHub repository's default branch (typically `main`).
 4. Click `Redeploy this version` to trigger a build
 5. Wait for the build to complete (this may take 5-10 minutes)
 6. You now have access to the `Amplify App ID` and the public domain name to use the web app.
 
-### Step 3: Configure Admin User
+### Step 2: Configure Admin User
 
 To create an admin user for accessing the admin dashboard:
 
@@ -347,13 +306,13 @@ To create an admin user for accessing the admin dashboard:
    - Username: your email address
    - Email: same as username
    - Temporary password: create a secure password
-6. Uncheck "Send an email invitation"
+6. Click "Don't send an email invitation"
 7. Click "Create user"
 8. After creation, select the user and click "Add user to group"
-9. Select the "Admins" group
+9. Select the "admin" group
 10. On first login, you'll be prompted to change your password
 
-### Step 4: Visit Web App
+### Step 3: Visit Web App
 
 You can now navigate to the web app URL (found in the Amplify console) to see your application in action.
 
@@ -378,8 +337,6 @@ You can now navigate to the web app URL (found in the Amplify console) to see yo
   - Security groups allow Lambda to access RDS
   - Database credentials are correct in Secrets Manager
 
-**Issue: Bedrock model access denied**
-- Solution: Ensure you've enabled the required models in Bedrock console for your region
 
 **Issue: CORS errors in browser**
 - Solution: Verify that the API Gateway CORS configuration includes your Amplify domain
@@ -396,15 +353,19 @@ You can now navigate to the web app URL (found in the Amplify console) to see yo
 
 To take down the deployed stack for a fresh redeployment in the future, follow these steps in order:
 
-1. **Delete Amplify App:**
+1. **Disable RDS Deletion Protection:**
+   - Navigate to **Amazon RDS** in the AWS Console
+   - Click on "Databases" in the left sidebar
+   - Select the database instance named `<STACK-PREFIX>-database`
+   - Click "Modify"
+   - Scroll down to "Deletion protection" and uncheck the box
+   - Click "Continue" and then "Modify DB instance"
+   - Wait for the modification to complete before proceeding
+
+2. **Delete Amplify App:**
    - Navigate to AWS Amplify console
    - Select your app
    - Click "Actions" → "Delete app"
-
-2. **Empty S3 Buckets:**
-   - Navigate to S3 console
-   - Find buckets created by the stack (they will have your stack prefix)
-   - Empty each bucket before deletion
 
 3. **Delete CloudFormation Stacks:**
    Navigate to AWS CloudFormation console and delete stacks in this order:
@@ -433,7 +394,7 @@ To take down the deployed stack for a fresh redeployment in the future, follow t
    - Navigate to Amazon ECR
    - Delete repositories created by the stack
 
-7. **Verify Cleanup:**
+7. **Verify Cleanup**:
    - Check CloudWatch Logs for any remaining log groups
    - Check Lambda functions for any remaining functions
    - Check API Gateway for any remaining APIs
