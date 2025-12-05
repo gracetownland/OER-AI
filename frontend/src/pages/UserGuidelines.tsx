@@ -73,6 +73,23 @@ export default function UserGuidelines() {
               </div>
             </CardContent>
           </Card>
+          {/* Privacy Statement */}
+          <Card className="shadow-lg mt-6">
+            <CardHeader>
+              <CardTitle className="text-2xl">Privacy Statement</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-base leading-relaxed">
+              <p>
+                BCcampus believes in protecting your privacy and recognizes the sensitivity of Personal Information. This statement outlines how we manage your Personal Information and safeguard your privacy. Please refer to BCcampus’ Privacy Policy for more information.
+              </p>
+              <h4 className="text-lg font-semibold">Your Information in Opterna</h4>
+              <ul className="list-disc list-inside">
+                <li>Personal information is not collected when using Opterna unless explicitly submitted and saved by you (e.g., when creating a shared prompt that includes personal data).</li>
+                <li>User history is stored for 30 days. Local session data is persisted in your browser for approximately 30 days to provide continuity of session across reloads.</li>
+                <li>Only user prompts that you choose to save will remain in Opterna beyond this timeframe; those saved prompts cannot be traced back to a user via the frontend UI.</li>
+              </ul>
+            </CardContent>
+          </Card>
         </div>
       </main>
       <Footer />

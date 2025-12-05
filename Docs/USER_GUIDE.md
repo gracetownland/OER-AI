@@ -50,20 +50,21 @@ Sharing chats:
 - To report an FAQ, click the flag icon on the FAQ Card.
 
 ### Practice Materials
-
+![practice_material](./media/practice_material.png)
 - Use the Practice tab to generate MCQs, Flashcards, and Short Answer question sets.
 - Validations and generation constraints (client-side):
-  - MCQ: up to 8 questions, up to 8 options per question
-  - Flashcards: up to 20 cards
-  - Short Answer: up to 10 questions
+  - MCQ: 
+  - Flashcards
+  - Short Answer
 - Generated materials are session-scoped and can be exported.
 
-Exporting & Grading:
-- Export to PDF or H5P: Use the Export action for generated materials to download a PDF or H5P .zip package (H5P uses a backend packaging endpoint that returns a downloadable zip file).
+ Grading:
 - The Short Answer material type supports a text grading/feedback flow (AI-assisted). The UI will show grading results where applicable.
+- MCQ material type will provide feedback based on whether the user chooses the correct or wrong answer. The UI will show hints or feedback as needed.
+- Flashcard is self graded. 
 
 ### Shared Prompts
-
+![shared_user_prompts](./media/shared_user_prompts.png)
 - Browse prompts shared by other users in the Shared Prompts tab.
 - Use the inline prompt card to insert the prompt into your chat session.
 - Report inappropriate shared prompts using the inline Flag icon on the prompt card.
@@ -80,11 +81,11 @@ Exporting & Grading:
 Switch to Instructor mode via the Mode selector (top header). Instructors have access to the Material Editor and additional tools.
 
 ### Material Editor & H5P Export
-
+![material_editor](./media/material_editor.png)
 - Use the Material Editor to review and edit MCQ, Short Answer, and Flashcard sets.
 - Edit questions, re-order, add options or explanations, and then export edits to H5P or PDF.
 - H5P export triggers the server-side packaging process and returns a downloadable zip file that can be imported into LMS platforms like Canvas or Moodle.
-
+- PDF export has 2 different modes. One is questions only, for students to use and another with the answers included for instructor use.
 ---
 
 ## Administrator View
