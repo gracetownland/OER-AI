@@ -1,12 +1,6 @@
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { MoreHorizontal, Flag, CornerUpRight } from "lucide-react";
+import { Flag, CornerUpRight } from "lucide-react";
 import { Button } from "../ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface FaqCardProps {
   question: string;
@@ -72,36 +66,18 @@ export function FaqCard({ question, count, onClick, faqId }: FaqCardProps) {
             <CornerUpRight className="h-4 w-4 text-muted-foreground" />
           </div>
           {/* report button */}
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="link"
-                className="cursor-pointer text-muted-foreground hover:text-foreground transition-colors"
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-              >
-                <MoreHorizontal className="h-5 w-5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent 
-              className="w-fit min-w-0 p-1" 
-              side="top" 
-              align="end" 
-              onClick={(e) => e.stopPropagation()}
-            >
-              <DropdownMenuItem
-                className="p-1 focus:bg-background focus:text-black hover:text-black text-muted-foreground cursor-pointer flex items-center"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleReport();
-                }}
-              >
-                <span >Report</span>
-                <Flag className="hover:text-black h-4 w-4 flex-shrink-0" />
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleReport();
+            }}
+            className="cursor-pointer h-8 w-8 text-muted-foreground hover:text-foreground transition-colors"
+            title="Report this FAQ"
+          >
+            <Flag className="h-4 w-4" />
+          </Button>
         </div>
       </CardFooter>
     </Card>
