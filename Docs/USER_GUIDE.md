@@ -93,10 +93,10 @@ Switch to Instructor mode via the Mode selector (top header). Instructors have a
 Administrators log in via `/admin/login` and perform ingestion, metadata, moderation, and system configuration tasks.
 
 ### Textbook Management & Ingestion
-
+![admin_dashboard](./media/admin_dashboard.png)
 - View ingestion status, job history, and content ingestion statistics in the Textbooks page.
-- Add or update textbook metadata and trigger re-ingestion when necessary (depending on your deployment). Some installations may allow you to upload files directly; others use a source URL.
-
+- Add or update textbook metadata and trigger re-ingestion when necessary
+![textbook_ingestion](./media/textbook_ingestion.png)
 ### AI System & Operational Settings
 
 - Manage the system prompt, set token limits, and update operational settings in AI Settings.
