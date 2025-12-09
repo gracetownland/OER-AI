@@ -252,6 +252,8 @@ It's time to set up everything that goes on behind the scenes! For more informat
 
 If you are new to CDK, note that the AWS Cloud Development Kit (CDK) lets you define cloud infrastructure using code. Review the [AWS CDK Documentation](https://docs.aws.amazon.com/cdk/) for a quick primer before proceeding.
 
+Note: Guardrails (Bedrock) are created as part of the CDK deployment. For operational guidance and advanced customization of guardrails and Bedrock configuration, see `Docs/BEDROCK_GUARDRAILS.md`.
+
 Open a terminal in the `/cdk` directory.
 
 **Initialize the CDK stack** (required only if you have not deployed any resources with CDK in this region before). Please replace `<YOUR-PROFILE-NAME>` with the appropriate AWS profile used earlier.

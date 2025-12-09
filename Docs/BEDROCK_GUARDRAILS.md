@@ -2,6 +2,35 @@
 
 This document explains the Bedrock Guardrails implementation integrated into the OER-AI project. It highlights how the guardrails are created, configured, and enforced in the CDK and runtime lambda code (text generation), and provides tips for testing, monitoring, and troubleshooting.
 
+## Introduction
+
+### What is Amazon Bedrock?
+Amazon Bedrock is a fully managed service that provides access to foundation models (LLMs) from leading AI providers through a single API. In this project, Amazon Bedrock powers the conversational AI assistant that helps students interact with textbook content.
+**Learn more:** https://docs.aws.amazon.com/bedrock/
+
+### How this project uses LLMs
+The OER-AI Assistant uses Bedrock foundation models to:
+- Answer student questions about textbook content
+- Generate practice materials (quizzes, flashcards, short-answer questions)
+- Provide personalized tutoring via natural language conversation
+
+The primary model used in the default configuration is Meta Llama 3 70B Instruct, accessed through Amazon Bedrock.
+
+### What are Bedrock Guardrails?
+Bedrock Guardrails are safety controls that check, filter, and moderate model inputs and outputs. They help ensure generated content is aligned with pedagogical and policy constraints, preventing the model from producing harmful or off-topic content.
+
+### Purpose of this document
+This document is a technical reference for administrators and developers who need to understand how Bedrock Guardrails are wired into the system, how they are enforced at runtime, and how to customize or troubleshoot guardrail behavior. Guardrails are created automatically during CDK deployment; this file is primarily for advanced customization and reference.
+
+### When to use this document
+You do NOT need to read this document to perform a standard deployment — the CDK creates and wires guardrails automatically as part of the standard deployment steps (see `Docs/DEPLOYMENT_GUIDE.md`). Use this document if you need to:
+- Understand how guardrails protect the application and user flows
+- Customize guardrail rules (topic/detection/PII handling)
+- Troubleshoot guardrail-related runtime behavior (blocked inputs/outputs)
+- Modify messages returned to users when guardrails block content
+- Audit or change the SSM parameters or IAM permissions used by guardrail features
+
+
 ## Overview
 
 Bedrock Guardrails are used to protect the system from:
@@ -10,6 +39,7 @@ Bedrock Guardrails are used to protect the system from:
 - Prompt injection attacks and system prompt extraction
 - Sensitive information exposure (emails, phone numbers, social insurance numbers, credit cards)
 - Off-topic content or non-educational requests, academic integrity violations
+  - PII (Personally Identifiable Information) such as email, phone numbers, social insurance numbers, and credit/debit card numbers
 
 This document reflects the implementation in the repository as of the current code:
 - CDK stack creation of the guardrail: `cdk/lib/api-stack.ts`
@@ -19,7 +49,13 @@ This document reflects the implementation in the repository as of the current co
 
 ### Infrastructure (CDK)
 
-The Bedrock guardrail is created in `cdk/lib/api-stack.ts` using the CDK Bedrock L1 construct `CfnGuardrail`. The relevant declaration creates a guardrail and stores the guardrail ID in SSM Parameter Store so Lambdas can reference it at runtime.
+The Bedrock guardrail is created in `cdk/lib/api-stack.ts` using the CDK Bedrock L1 construct `CfnGuardrail`.
+
+Definitions:
+- **L1 construct:** Low-level CloudFormation resource constructs in AWS CDK that map directly to CloudFormation resources; `CfnGuardrail` is the L1 construct used for Bedrock guardrails.
+- **SSM Parameter Store:** AWS Systems Manager Parameter Store provides secure, hierarchical storage for configuration values such as the guardrail ID. The CDK stores the guardrail ID here so Lambda functions can read it at runtime.
+
+The relevant declaration creates a guardrail and stores the guardrail ID in SSM Parameter Store so Lambdas can reference it at runtime.
 
 Key snippet from `cdk/lib/api-stack.ts`:
 
@@ -211,3 +247,12 @@ Note: Guardrail `guardrailVersion` is set to `DRAFT` by runtime; after publishin
 - Bedrock Documentation: https://docs.aws.amazon.com/bedrock
 
 ---
+
+## Glossary
+
+- **Bedrock LLM / Foundation model**: Pretrained large language models (LLMs) offered through Amazon Bedrock, such as Meta Llama 3 or Cohere Embed models. These are the models the runtime invokes to generate text and embeddings.
+- **Guardrail**: A Bedrock configuration that contains policy-based rules to filter, block, or transform prompts and responses based on content policy, sensitive information, and topic rules.
+- **PII (Personally Identifiable Information)**: Sensitive personal data that could identify an individual (e.g., email addresses, phone numbers, national identification numbers, credit/debit card numbers). In this project, PII is blocked by guardrails to prevent disclosure or misuse.
+- **L1 construct (CDK)**: Low-level CDK constructs that map directly to CloudFormation resources. `CfnGuardrail` is used to create the Bedrock guardrail resource at the CloudFormation level.
+- **SSM Parameter Store**: AWS Systems Manager Parameter Store, used to securely store configuration values (like the guardrail ID) so that Lambda functions can read them at runtime.
+- **apply_guardrail**: Bedrock runtime API used by the text generation Lambda to evaluate input or output texts against guardrail rules.
