@@ -390,8 +390,20 @@ You can now navigate to the web app URL (found in the Amplify console) to see yo
 
 ```ts
 // Before (strict/specific ARN)
+ resources: [
+          `arn:aws:lambda:${this.region}:${this.account}:function:*-DataIngestionLambdaDockerFunction`,
+          `arn:aws:lambda:${this.region}:${this.account}:function:*-TextGenLambdaDockerFunction`,
+          `arn:aws:lambda:${this.region}:${this.account}:function:*-PracticeMaterialLambdaDockerFunction`,
+        ],
+// After (temporary wildcard to avoid ResourceExistenceCheck failures)
 resources: [
-  "`arn:aws:ecr:${this.region}:${this.account}:repository/${repoName}`"
+  "*"
+]
+```
+```ts
+// Before (strict/specific ARN)
+resources: [
+                `arn:aws:glue:${this.region}:${this.account}:job/${id}-data-processing-job`,
 ]
 
 // After (temporary wildcard to avoid ResourceExistenceCheck failures)
@@ -400,15 +412,7 @@ resources: [
 ]
 ```
 
-or for CodePipeline/CodeBuild-related ARNs:
 
-```ts
-// Before (strict)
-`arn:aws:codepipeline:${this.region}:${this.account}:${id}-DockerImagePipeline`
-
-// After (wildcard)
-`*`
-```
 
   2. Re-run `cdk deploy --all` to complete the initial deployment. Once the pipeline completes and has created the necessary resources (ECR repos, artifacts, etc.), you may revert the wildcard ARNs to the specific ARNs and re-deploy to restore least-privilege scoping.
   3. Trigger the pipeline (Console -> CodePipeline -> Release change) OR push a commit to the repo to allow the pipeline to create images and artifacts.
