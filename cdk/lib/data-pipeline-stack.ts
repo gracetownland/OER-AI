@@ -175,21 +175,25 @@ export class DataPipelineStack extends cdk.Stack {
     });
 
     // Upload Glue scripts and libraries
-    new s3deploy.BucketDeployment(this, "DeployGlueJobScripts", {
-      sources: [s3deploy.Source.asset("./glue/scripts/")],
-      destinationBucket: this.glueBucket,
-      destinationKeyPrefix: "glue/scripts",
-      exclude: [
-        "*.ipynb",
-        "*test*",
-        "*src*",
-        "*DS_Store",
-        "*__pycache__*",
-        "*.pyc",
-        "*.json",
-        "*temp*",
-      ],
-    });
+    const deployGlueScripts = new s3deploy.BucketDeployment(
+      this,
+      "DeployGlueJobScripts",
+      {
+        sources: [s3deploy.Source.asset("./glue/scripts/")],
+        destinationBucket: this.glueBucket,
+        destinationKeyPrefix: "glue/scripts",
+        exclude: [
+          "*.ipynb",
+          "*test*",
+          "*src*",
+          "*DS_Store",
+          "*__pycache__*",
+          "*.pyc",
+          "*.json",
+          "*temp*",
+        ],
+      }
+    );
 
     // IAM Role for Glue Jobs
     const glueJobRole = new iam.Role(this, "GlueJobRole", {
@@ -306,6 +310,9 @@ export class DataPipelineStack extends cdk.Stack {
       timeout: TIMEOUT,
       glueVersion: GLUE_VER,
     });
+
+    // Ensure scripts are uploaded before creating the job
+    dataProcessingJob.node.addDependency(deployGlueScripts);
 
     // Create Lambda function to process SQS messages and trigger Glue jobs
     const jobProcessorRole = new iam.Role(this, `${id}-JobProcessorRole`, {
