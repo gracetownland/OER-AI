@@ -58,7 +58,6 @@ paths:
     post:
       tags:
         - Admin
-        - User
       summary: Create a new admin user
       operationId: create_admin_user
       security:
