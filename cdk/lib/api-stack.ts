@@ -1219,27 +1219,6 @@ export class ApiGatewayStack extends cdk.Stack {
     );
     */
 
-    const dataIngestionLambdaDockerFunction = new lambda.DockerImageFunction(
-      this,
-      `${id}-DataIngestionLambdaDockerFunction`,
-      {
-        code: lambda.DockerImageCode.fromEcr(
-          props.ecrRepositories["dataIngestion"],
-          {
-            tagOrDigest: "latest",
-          }
-        ),
-        memorySize: 1024,
-        timeout: cdk.Duration.seconds(900),
-        vpc: vpcStack.vpc, // Pass the VPC
-        functionName: `${id}-DataIngestionLambdaDockerFunction`,
-        description: "Handles document ingestion and embedding generation",
-        environment: {
-          REGION: this.region,
-        },
-      }
-    );
-
     const lambdaUserFunction = new lambda.Function(this, `${id}-userFunction`, {
       runtime: lambda.Runtime.NODEJS_22_X,
       code: lambda.Code.fromAsset("lambda"),
@@ -1274,18 +1253,22 @@ export class ApiGatewayStack extends cdk.Stack {
     cfnLambda_user.overrideLogicalId("userFunction");
 
     // --- Welcome message: public GET and admin PUT ---
-    const getWelcomeMessageFunction = new lambda.Function(this, `${id}-GetWelcomeMessageFunction`, {
-      runtime: lambda.Runtime.NODEJS_22_X,
-      code: lambda.Code.fromAsset("lambda/config"),
-      handler: "getWelcomeMessageFunction.handler",
-      timeout: Duration.seconds(10),
-      functionName: `${id}-GetWelcomeMessageFunction`,
-      memorySize: 128,
-      role: lambdaRole,
-      environment: {
-        WELCOME_MESSAGE_PARAM_NAME: welcomeMessageParameter.parameterName,
-      },
-    });
+    const getWelcomeMessageFunction = new lambda.Function(
+      this,
+      `${id}-GetWelcomeMessageFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        code: lambda.Code.fromAsset("lambda/config"),
+        handler: "getWelcomeMessageFunction.handler",
+        timeout: Duration.seconds(10),
+        functionName: `${id}-GetWelcomeMessageFunction`,
+        memorySize: 128,
+        role: lambdaRole,
+        environment: {
+          WELCOME_MESSAGE_PARAM_NAME: welcomeMessageParameter.parameterName,
+        },
+      }
+    );
 
     // Grant read access to SSM parameter for GET
     welcomeMessageParameter.grantRead(getWelcomeMessageFunction);
@@ -1296,28 +1279,35 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/public/config/welcomeMessage`,
     });
 
-    const cfnGetWelcome = getWelcomeMessageFunction.node.defaultChild as lambda.CfnFunction;
+    const cfnGetWelcome = getWelcomeMessageFunction.node
+      .defaultChild as lambda.CfnFunction;
     cfnGetWelcome.overrideLogicalId("GetWelcomeMessageFunction");
 
-    const setWelcomeMessageFunction = new lambda.Function(this, `${id}-AdminSetWelcomeMessageFunction`, {
-      runtime: lambda.Runtime.NODEJS_22_X,
-      code: lambda.Code.fromAsset("lambda/config"),
-      handler: "setWelcomeMessageFunction.handler",
-      timeout: Duration.seconds(10),
-      functionName: `${id}-AdminSetWelcomeMessageFunction`,
-      memorySize: 128,
-      role: lambdaRole,
-      environment: {
-        WELCOME_MESSAGE_PARAM_NAME: welcomeMessageParameter.parameterName,
-      },
-    });
+    const setWelcomeMessageFunction = new lambda.Function(
+      this,
+      `${id}-AdminSetWelcomeMessageFunction`,
+      {
+        runtime: lambda.Runtime.NODEJS_22_X,
+        code: lambda.Code.fromAsset("lambda/config"),
+        handler: "setWelcomeMessageFunction.handler",
+        timeout: Duration.seconds(10),
+        functionName: `${id}-AdminSetWelcomeMessageFunction`,
+        memorySize: 128,
+        role: lambdaRole,
+        environment: {
+          WELCOME_MESSAGE_PARAM_NAME: welcomeMessageParameter.parameterName,
+        },
+      }
+    );
 
     welcomeMessageParameter.grantRead(setWelcomeMessageFunction);
-    setWelcomeMessageFunction.addToRolePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ["ssm:PutParameter"],
-      resources: [welcomeMessageParameter.parameterArn],
-    }));
+    setWelcomeMessageFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["ssm:PutParameter"],
+        resources: [welcomeMessageParameter.parameterArn],
+      })
+    );
 
     setWelcomeMessageFunction.addPermission("AllowAdminApiGatewayInvoke", {
       principal: new iam.ServicePrincipal("apigateway.amazonaws.com"),
@@ -1325,7 +1315,8 @@ export class ApiGatewayStack extends cdk.Stack {
       sourceArn: `arn:aws:execute-api:${this.region}:${this.account}:${this.api.restApiId}/*/*/admin/config/welcomeMessage`,
     });
 
-    const cfnSetWelcome = setWelcomeMessageFunction.node.defaultChild as lambda.CfnFunction;
+    const cfnSetWelcome = setWelcomeMessageFunction.node
+      .defaultChild as lambda.CfnFunction;
     cfnSetWelcome.overrideLogicalId("AdminSetWelcomeMessageFunction");
 
     lambdaUserFunction.addPermission("AllowAdminApiGatewayInvoke", {

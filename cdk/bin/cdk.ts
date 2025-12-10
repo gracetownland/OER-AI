@@ -52,11 +52,6 @@ const cicdStack = new CICDStack(app, `${StackPrefix}-CICD`, {
   environmentName: environment,
   lambdaFunctions: [
     {
-      name: "dataIngestion",
-      functionName: `${StackPrefix}-Api-DataIngestionLambdaDockerFunction`,
-      sourceDir: "cdk/lambda/dataIngestion",
-    },
-    {
       name: "textGeneration",
       functionName: `${StackPrefix}-Api-TextGenLambdaDockerFunction`,
       sourceDir: "cdk/lambda/textGeneration",

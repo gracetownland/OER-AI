@@ -362,7 +362,7 @@ export class DataPipelineStack extends cdk.Stack {
         runtime: lambda.Runtime.PYTHON_3_11,
         handler: "main.lambda_handler",
         code: lambda.Code.fromAsset("lambda/jobProcessor"),
-        timeout: Duration.minutes(15),
+        timeout: Duration.minutes(4),
         memorySize: 512,
         role: jobProcessorRole,
         environment: {
