@@ -579,69 +579,78 @@ exports.handler = async (event) => {
           break;
         }
 
-        /* Get total expected sections from the latest ingest job
+        // Get the latest job for this textbook to get ingestion progress
         const latestJob = await sqlConnection`
-          SELECT total_sections 
+          SELECT 
+            id,
+            status,
+            ingested_sections,
+            total_sections,
+            ingested_images,
+            error_message,
+            started_at,
+            completed_at,
+            created_at
           FROM jobs 
-          WHERE textbook_id = ${statusTextbookId} AND type = 'ingest_textbook' 
+          WHERE textbook_id = ${statusTextbookId}
           ORDER BY created_at DESC 
           LIMIT 1
         `;
-        const totalSections = latestJob.length > 0 ? latestJob[0].total_sections || 0 : 0;
-        */
 
-        // Get actual ingested sections count
-        const ingestedSectionsResult = await sqlConnection`
-          SELECT COUNT(*) as count FROM sections WHERE textbook_id = ${statusTextbookId}
-        `;
-        const ingestedSections = parseInt(ingestedSectionsResult[0].count) || 0;
+        // Default values if no job exists yet
+        let totalSections = 0;
+        let ingestedSections = 0;
+        let jobStatus = null;
+        let jobError = null;
 
-        // Get collection ID for this textbook
-        const collectionResult = await sqlConnection`
-          SELECT uuid FROM langchain_pg_collection WHERE name = ${statusTextbookId}
-        `;
-
-        let imageCount = 0;
-        let imagesList = [];
-
-        if (collectionResult.length > 0) {
-          const collectionId = collectionResult[0].uuid;
-
-          // Get unique images from langchain embeddings
-          // We deduplicate based on image src because multiple chunks in the same chapter
-          // will contain the same media metadata
-          const imagesListResult = await sqlConnection`
-              WITH all_images AS (
-                SELECT 
-                  jsonb_array_elements(cmetadata->'media'->'images') as img_data,
-                  cmetadata->>'chapter_number' as chapter_number,
-                  cmetadata->>'source_title' as chapter_title
-                FROM langchain_pg_embedding
-                WHERE collection_id = ${collectionId}
-                AND cmetadata->'media'->'images' IS NOT NULL
-              )
-              SELECT DISTINCT ON (img_data->>'src')
-                 img_data, chapter_number, chapter_title
-              FROM all_images
-            `;
-
-          imageCount = imagesListResult.length;
-
-          imagesList = imagesListResult.map((row) => ({
-            url: row.img_data.src,
-            alt: row.img_data.alt,
-            caption: row.img_data.caption,
-            chapter_number: row.chapter_number,
-            chapter_title: row.chapter_title,
-          }));
+        if (latestJob.length > 0) {
+          const job = latestJob[0];
+          totalSections = parseInt(job.total_sections) || 0;
+          ingestedSections = parseInt(job.ingested_sections) || 0;
+          jobStatus = job.status;
+          jobError = job.error_message;
         }
+
+        // Get all media items from media_items table
+        const mediaResult = await sqlConnection`
+          SELECT 
+            mi.id,
+            mi.media_type,
+            mi.uri,
+            mi.source_url,
+            mi.description,
+            s.title as chapter_title,
+            s.order_index as chapter_number
+          FROM media_items mi
+          LEFT JOIN sections s ON mi.section_id = s.id
+          WHERE mi.textbook_id = ${statusTextbookId}
+          ORDER BY s.order_index, mi.media_type, mi.id
+        `;
+
+        // Count images specifically
+        const imageCount = mediaResult.filter(
+          (item) => item.media_type === "image"
+        ).length;
+
+        // Format all media items
+        const mediaList = mediaResult.map((row) => ({
+          id: row.id,
+          media_type: row.media_type,
+          url: row.uri,
+          source_url: row.source_url,
+          description: row.description,
+          chapter_number: row.chapter_number,
+          chapter_title: row.chapter_title,
+        }));
 
         response.statusCode = 200;
         response.body = JSON.stringify({
-          total_sections: ingestedSections,
+          total_sections: totalSections,
           ingested_sections: ingestedSections,
           image_count: imageCount,
-          images: imagesList,
+          media_items: mediaList,
+          job_status: jobStatus,
+          job_error: jobError,
         });
         break;
 

@@ -852,7 +852,111 @@ def postprocess_documents(docs, min_chars=600):
 
     return unique
 
-def process_chapters_to_vectors(extracted_chapters, vector_store, s3_bucket, textbook_id):
+def create_media_item(textbook_id, section_id, media_type, uri, source_url, description=None):
+    """
+    Create a media item in the database.
+    Returns the media_item_id.
+    """
+    try:
+        # Check if media item already exists
+        check_query = """
+            SELECT id FROM media_items
+            WHERE textbook_id = %s AND uri = %s
+        """
+        existing = execute_query(check_query, (textbook_id, uri), fetch_one=True)
+        
+        if existing:
+            media_item_id = str(existing[0])
+            logger.info(f"Media item already exists: {media_item_id}")
+            return media_item_id
+        
+        # Create new media item
+        insert_query = """
+            INSERT INTO media_items (textbook_id, section_id, media_type, uri, source_url, description)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING id
+        """
+        result = execute_query(
+            insert_query,
+            (textbook_id, section_id, media_type, uri, source_url, description),
+            fetch_one=True
+        )
+        media_item_id = str(result[0])
+        logger.info(f"Created new media item: {media_item_id}")
+        return media_item_id
+        
+    except Exception as e:
+        logger.error(f"Error creating media item: {e}")
+        raise
+
+def create_job(textbook_id, total_sections=0):
+    """
+    Create a new job record for tracking textbook ingestion.
+    Returns the job_id.
+    """
+    try:
+        insert_query = """
+            INSERT INTO jobs (textbook_id, status, total_sections, started_at)
+            VALUES (%s, %s, %s, NOW())
+            RETURNING id
+        """
+        result = execute_query(
+            insert_query,
+            (textbook_id, 'running', total_sections),
+            fetch_one=True
+        )
+        job_id = str(result[0])
+        logger.info(f"Created job with ID: {job_id} for textbook {textbook_id}")
+        return job_id
+        
+    except Exception as e:
+        logger.error(f"Error creating job: {e}")
+        raise
+
+def update_job_progress(job_id, ingested_sections=None):
+    """
+    Update job progress with the number of ingested sections.
+    """
+    try:
+        update_query = """
+            UPDATE jobs
+            SET ingested_sections = %s,
+                updated_at = NOW()
+            WHERE id = %s
+        """
+        execute_query(update_query, (ingested_sections, job_id))
+        logger.info(f"Updated job {job_id}: ingested_sections={ingested_sections}")
+        
+    except Exception as e:
+        logger.error(f"Error updating job progress: {e}")
+        # Don't raise - we don't want to fail the whole job if tracking fails
+
+def complete_job(job_id, status='done', error_message=None):
+    """
+    Mark a job as completed (done or failed).
+    
+    Args:
+        job_id: ID of the job to complete
+        status: 'done' or 'failed'
+        error_message: Optional error message if status is 'failed'
+    """
+    try:
+        update_query = """
+            UPDATE jobs
+            SET status = %s,
+                error_message = %s,
+                completed_at = NOW(),
+                updated_at = NOW()
+            WHERE id = %s
+        """
+        execute_query(update_query, (status, error_message, job_id))
+        logger.info(f"Completed job {job_id} with status: {status}")
+        
+    except Exception as e:
+        logger.error(f"Error completing job: {e}")
+        # Don't raise - we don't want to fail the whole job if tracking fails
+
+def process_chapters_to_vectors(extracted_chapters, vector_store, s3_bucket, textbook_id, job_id=None):
     """
     Process extracted chapters into text chunks and store as vector embeddings.
     """
@@ -935,6 +1039,10 @@ def process_chapters_to_vectors(extracted_chapters, vector_store, s3_bucket, tex
                 else:
                     logger.warning(f"No chunks to add for chapter: {chapter['metadata']['source_title']}")
                 
+                # Update job progress after each section
+                if job_id:
+                    update_job_progress(job_id, ingested_sections=i)
+                
             except Exception as e:
                 logger.error(f"Error processing chapter {chapter['s3_key']}: {e}")
                 continue
@@ -1007,7 +1115,7 @@ def invoke_cohere_embed_v4_with_online_image(image_url):
     
     bedrock_runtime = boto3.client(
         service_name="bedrock-runtime",
-        region_name=args['region_name']
+        region_name='us-east-1'
     )
 
     logger.info(f"Invoking Bedrock model for image: {image_url}")
@@ -1055,7 +1163,6 @@ def process_image_embeddings(image_data_list, vector_store, textbook_id, book_ti
     texts = []
     embeddings_list = []
     metadatas = []
-    ids = []
     
     successful_count = 0
     failed_count = 0
@@ -1086,7 +1193,7 @@ def process_image_embeddings(image_data_list, vector_store, textbook_id, book_ti
             # Prepare metadata
             metadata = {
                 'type': 'image',
-                'image_url': img_url,
+                'source': img_url,
                 'alt_text': img_data.get('alt', ''),
                 'caption': img_data.get('caption', ''),
                 'chapter_number': img_data['chapter_number'],
@@ -1095,14 +1202,26 @@ def process_image_embeddings(image_data_list, vector_store, textbook_id, book_ti
                 'textbook_id': textbook_id,
                 'book_title': book_title
             }
-            
-            # Generate unique ID for this image
-            image_id = f"img_{textbook_id}_{idx}"
+
+            try:
+                media_item_id = create_media_item(
+                    textbook_id=textbook_id,
+                    section_id=None,
+                    media_type='image',
+                    uri=img_url,
+                    source_url=img_data['source_url'],
+                    description=text_description
+                )
+                # Add media_item_id to metadata
+                metadata['media_item_id'] = media_item_id
+                logger.info(f"Created media_item for image: {media_item_id}")
+            except Exception as e:
+                logger.error(f"Error creating media_item for image {img_url}: {e}")
+                
             
             texts.append(text_description)
             embeddings_list.append(embedding)
             metadatas.append(metadata)
-            ids.append(image_id)
             
             successful_count += 1
             
@@ -1112,15 +1231,13 @@ def process_image_embeddings(image_data_list, vector_store, textbook_id, book_ti
                     vector_store.add_embeddings(
                         texts=texts,
                         embeddings=embeddings_list,
-                        metadatas=metadatas,
-                        ids=ids
+                        metadatas=metadatas
                     )
                     logger.info(f"Added batch of {len(embeddings_list)} image embeddings to vector store")
                     # Clear lists for next batch
                     texts = []
                     embeddings_list = []
                     metadatas = []
-                    ids = []
                 except Exception as e:
                     logger.error(f"Error adding image embeddings batch to vector store: {e}")
                     failed_count += len(embeddings_list)
@@ -1128,7 +1245,6 @@ def process_image_embeddings(image_data_list, vector_store, textbook_id, book_ti
                     texts = []
                     embeddings_list = []
                     metadatas = []
-                    ids = []
             
             # Add small delay to avoid rate limiting
             time.sleep(0.5)
@@ -1145,7 +1261,6 @@ def process_image_embeddings(image_data_list, vector_store, textbook_id, book_ti
                 texts=texts,
                 embeddings=embeddings_list,
                 metadatas=metadatas,
-                ids=ids
             )
             logger.info(f"Added final batch of {len(embeddings_list)} image embeddings to vector store")
         except Exception as e:
@@ -1286,6 +1401,7 @@ def extract_text(start_url, combined_metadata, s3_bucket):
 
 def main():
     """Main function to orchestrate textbook processing"""
+    job_id = None
     try:
         logger.info("Starting textbook processing...")
         s3_bucket = args['GLUE_BUCKET']
@@ -1302,6 +1418,7 @@ def main():
         book_id = metadata.get('bookId', 'unknown')
         
         logger.info(f"Combined metadata: {json.dumps(combined_metadata, indent=2, default=str)}")
+        
         # Insert textbook into database
         logger.info("Inserting textbook into database...")
         textbook_id = None
@@ -1356,6 +1473,7 @@ def main():
             cursor.execute(query, params)
             textbook_id = cursor.fetchone()[0]
             conn.commit()
+            job_id = create_job(textbook_id, total_sections=0)
             
             logger.info(f"Successfully inserted textbook with ID: {textbook_id}")
             
@@ -1383,18 +1501,31 @@ def main():
         
         # Extract text from all chapters
         extracted_chapters, image_data_list = extract_text(start_url, combined_metadata, s3_bucket)
-        
+
+        if job_id and extracted_chapters:
+            try:
+                update_query = """
+                    UPDATE jobs
+                    SET total_sections = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                """
+                execute_query(update_query, (len(extracted_chapters), job_id))
+                logger.info(f"Updated job {job_id} with total_sections={len(extracted_chapters)}")
+            except Exception as e:
+                logger.error(f"Error updating job total_sections: {e}")
+
         # Process chapters into vector embeddings if we have a vector store
         if vector_store and extracted_chapters:
             logger.info("Processing chapters into vector embeddings...")
             try:
-                process_chapters_to_vectors(extracted_chapters, vector_store, s3_bucket, textbook_id)
+                process_chapters_to_vectors(extracted_chapters, vector_store, s3_bucket, textbook_id, job_id)
             except Exception as e:
                 logger.error(f"Error processing chapters to vectors: {e}")
                 # Continue to show results even if vector processing fails
         
         # Process image embeddings if we have a vector store and images
-        """
+        
         if vector_store and image_data_list:
             logger.info("Processing image embeddings...")
             try:
@@ -1407,10 +1538,13 @@ def main():
             except Exception as e:
                 logger.error(f"Error processing image embeddings: {e}")
                 # Continue to show results even if image processing fails
-        """
+        
         if not extracted_chapters:
             logger.warning("No chapters were successfully processed")
             return
+
+        if job_id:
+            complete_job(job_id, status='done')
         
         # Print final results
         print("=== PROCESSING RESULTS ===")
@@ -1440,6 +1574,8 @@ def main():
         
     except Exception as e:
         logger.error(f"Error in main processing: {e}")
+        if 'job_id' in locals() and job_id:
+            complete_job(job_id, status='failed', error_message=str(e))
         raise
 
 if __name__ == "__main__":

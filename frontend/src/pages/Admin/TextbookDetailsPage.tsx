@@ -96,11 +96,23 @@ type SharedPrompt = {
   updated_at: string;
 };
 
+type MediaItem = {
+  id: string;
+  media_type: string;
+  url: string;
+  source_url: string;
+  description: string;
+  chapter_number: number;
+  chapter_title: string;
+};
+
 type IngestionStatus = {
   total_sections: number;
   ingested_sections: number;
   image_count: number;
-  images: any[];
+  media_items: MediaItem[];
+  job_status: string | null;
+  job_error: string | null;
 };
 
 function ChartCard({
@@ -973,6 +985,33 @@ export default function TextbookDetailsPage() {
                   <p className="text-gray-500">
                     Ingestion status and linked materials.
                   </p>
+                  {ingestionStatus?.job_status && (
+                    <div className="mt-3">
+                      <Badge
+                        variant={
+                          ingestionStatus.job_status === "done"
+                            ? "default"
+                            : ingestionStatus.job_status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                        }
+                        className={
+                          ingestionStatus.job_status === "done"
+                            ? "bg-green-100 text-green-700"
+                            : ingestionStatus.job_status === "running"
+                            ? "bg-blue-100 text-blue-700"
+                            : ""
+                        }
+                      >
+                        {ingestionStatus.job_status.toUpperCase()}
+                      </Badge>
+                      {ingestionStatus.job_error && (
+                        <p className="text-sm text-red-600 mt-2">
+                          Error: {ingestionStatus.job_error}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1002,50 +1041,62 @@ export default function TextbookDetailsPage() {
 
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
-                    Associated Media
+                    Associated Media (
+                    {ingestionStatus?.media_items?.length || 0} items)
                   </h3>
                   <div className="grid gap-4">
-                    {ingestionStatus?.images &&
-                    ingestionStatus.images.length > 0 ? (
-                      ingestionStatus.images.map((img: any, i: number) => (
-                        <Card key={i}>
-                          <CardContent className="p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden shrink-0">
-                                {img.url ? (
-                                  <img
-                                    src={img.url}
-                                    alt={img.alt || "Media"}
-                                    className="h-full w-full object-cover"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = "none";
-                                    }}
-                                  />
-                                ) : (
-                                  <FileVideo className="h-6 w-6 text-blue-600" />
-                                )}
+                    {ingestionStatus?.media_items &&
+                    ingestionStatus.media_items.length > 0 ? (
+                      ingestionStatus.media_items.map(
+                        (item: MediaItem, i: number) => (
+                          <Card key={item.id}>
+                            <CardContent className="p-4 flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                <div className="h-12 w-12 rounded-lg bg-blue-100 flex items-center justify-center overflow-hidden shrink-0">
+                                  {item.media_type === "image" && item.url ? (
+                                    <img
+                                      src={item.url}
+                                      alt={item.description || "Media"}
+                                      className="h-full w-full object-cover"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = "none";
+                                      }}
+                                    />
+                                  ) : (
+                                    <FileVideo className="h-6 w-6 text-blue-600" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="font-medium text-gray-900 line-clamp-1">
+                                      {item.description ||
+                                        `${item.media_type} ${i + 1}`}
+                                    </p>
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] shrink-0"
+                                    >
+                                      {item.media_type}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-gray-500 truncate">
+                                    Chapter {item.chapter_number}:{" "}
+                                    {item.chapter_title || "Unknown"}
+                                  </p>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <p className="font-medium text-gray-900 line-clamp-1">
-                                  {img.caption || img.alt || `Image ${i + 1}`}
-                                </p>
-                                <p className="text-sm text-gray-500 truncate">
-                                  Chapter {img.chapter_number}:{" "}
-                                  {img.chapter_title}
-                                </p>
-                              </div>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => window.open(img.url, "_blank")}
-                              disabled={!img.url}
-                            >
-                              View
-                            </Button>
-                          </CardContent>
-                        </Card>
-                      ))
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => window.open(item.url, "_blank")}
+                                disabled={!item.url}
+                              >
+                                View
+                              </Button>
+                            </CardContent>
+                          </Card>
+                        )
+                      )
                     ) : (
                       <div className="text-center py-10 text-gray-500 bg-gray-50 rounded-lg border border-dashed">
                         No media items found for this textbook.
