@@ -16,6 +16,7 @@ s3 = boto3.client(
 def lambda_handler(event, context):
     """
     Generate pre-signed URLs for uploading files to S3
+    Supports different upload types: 'textbook' or 'media'
     """
     query_params = event.get("queryStringParameters", {})
 
@@ -28,11 +29,18 @@ def lambda_handler(event, context):
 
     file_name = query_params.get("file_name", "")
     content_type = query_params.get("content_type", "application/octet-stream")
+    upload_type = query_params.get("upload_type", "textbook")  # Default to textbook for backward compatibility
+
+    # Determine the upload prefix based on type
+    if upload_type == "media":
+        prefix = "uploads/media"
+    else:
+        prefix = "uploads/textbooks"
 
     # Create key with timestamp to avoid collisions
     import time
     timestamp = int(time.time())
-    key = f"uploads/{timestamp}_{file_name}"
+    key = f"{prefix}/{timestamp}_{file_name}"
 
     try:
         presigned_url = s3.generate_presigned_url(

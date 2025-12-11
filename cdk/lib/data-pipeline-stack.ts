@@ -20,8 +20,10 @@ interface DataPipelineStackProps extends cdk.StackProps {
 export class DataPipelineStack extends cdk.Stack {
   public readonly csvBucket: s3.Bucket;
   public readonly textbookIngestionQueue: sqs.Queue;
+  public readonly mediaIngestionQueue: sqs.Queue;
   public readonly csvProcessorFunction: lambda.Function;
   public readonly jobProcessorLambda: lambda.Function;
+  public readonly mediaJobProcessorLambda: lambda.Function;
   public readonly glueConnection: glue.CfnConnection;
   public readonly glueBucket: s3.Bucket;
 
@@ -75,6 +77,28 @@ export class DataPipelineStack extends cdk.Stack {
       }
     );
 
+    // Create SQS FIFO queue for media processing (transcripts, PDFs, PPTs)
+    this.mediaIngestionQueue = new sqs.Queue(
+      this,
+      `${id}-media-ingestion-queue`,
+      {
+        queueName: `${id}-media-ingestion-queue.fifo`,
+        fifo: true,
+        contentBasedDeduplication: true,
+        visibilityTimeout: Duration.minutes(10), // Longer timeout for media processing
+        retentionPeriod: Duration.days(14),
+        deadLetterQueue: {
+          queue: new sqs.Queue(this, `${id}-media-ingestion-dlq`, {
+            queueName: `${id}-media-ingestion-dlq.fifo`,
+            fifo: true,
+            contentBasedDeduplication: true,
+            retentionPeriod: Duration.days(14),
+          }),
+          maxReceiveCount: 5, // Fewer retries for media processing
+        },
+      }
+    );
+
     // Create Lambda execution role with necessary permissions
     const lambdaRole = new iam.Role(this, `${id}-DataPipelineLambdaRole`, {
       roleName: `${id}-DataPipelineLambdaRole`,
@@ -111,6 +135,7 @@ export class DataPipelineStack extends cdk.Stack {
         environment: {
           REGION: this.region,
           QUEUE_URL: this.textbookIngestionQueue.queueUrl,
+          MEDIA_QUEUE_URL: this.mediaIngestionQueue.queueUrl,
         },
         role: lambdaRole,
         vpc: vpcStack.vpc,
@@ -120,8 +145,9 @@ export class DataPipelineStack extends cdk.Stack {
     // Grant Lambda permissions to read from S3 bucket
     this.csvBucket.grantRead(this.csvProcessorFunction);
 
-    // Grant Lambda permissions to send messages to SQS queue
+    // Grant Lambda permissions to send messages to SQS queues
     this.textbookIngestionQueue.grantSendMessages(this.csvProcessorFunction);
+    this.mediaIngestionQueue.grantSendMessages(this.csvProcessorFunction);
 
     // Add S3 event notification to trigger Lambda on CSV uploads
     this.csvProcessorFunction.addEventSource(
@@ -314,6 +340,47 @@ export class DataPipelineStack extends cdk.Stack {
     // Ensure scripts are uploaded before creating the job
     dataProcessingJob.node.addDependency(deployGlueScripts);
 
+    // Python libraries for media processing (includes PDF, PPTX, and web scraping support)
+    const MEDIA_PYTHON_LIBS =
+      "requests,pandas==2.3.3,psycopg2-binary==2.9.10,langchain-text-splitters==1.0.0,langchain-aws==1.0.0,langchain-postgres==0.0.16,langchain-core==1.0.7,boto3==1.40.72,PyPDF2==3.0.1,python-pptx==0.6.21,beautifulsoup4==4.12.2";
+
+    // Glue Job for media processing (transcripts, PDFs, PPTs)
+    const mediaProcessingJob = new glue.CfnJob(this, "MediaProcessingJob", {
+      name: `${id}-media-processing-job`,
+      role: glueJobRole.roleArn,
+      command: {
+        name: "glueetl",
+        scriptLocation: `s3://${this.glueBucket.bucketName}/glue/scripts/media_processing.py`,
+        pythonVersion: PYTHON_VER,
+      },
+      defaultArguments: {
+        "--job-language": "python",
+        "--job-bookmark-option": "job-bookmark-disable",
+        "--enable-metrics": "true",
+        "--enable-continuous-cloudwatch-log": "true",
+        "--library-set": "analytics",
+        "--GLUE_BUCKET": this.glueBucket.bucketName,
+        "--region_name": this.region,
+        "--rds_secret": databaseStack.secretPathAdminName,
+        "--rds_proxy_endpoint": databaseStack.rdsProxyEndpoint,
+        "--SQS_QUEUE_URL": this.mediaIngestionQueue.queueUrl,
+        "--TempDir": `s3://${this.glueBucket.bucketName}/temp/media/`,
+        "--additional-python-modules": MEDIA_PYTHON_LIBS,
+        "--embedding_model_id": `cohere.embed-v4:0`,
+      },
+      connections: {
+        connections: [this.glueConnection.ref],
+      },
+      executionProperty: { maxConcurrentRuns: 10 }, // Limit concurrent media jobs
+      maxRetries: MAX_RETRIES,
+      maxCapacity: MAX_CAPACITY,
+      timeout: TIMEOUT,
+      glueVersion: GLUE_VER,
+    });
+
+    // Ensure scripts are uploaded before creating the media job
+    mediaProcessingJob.node.addDependency(deployGlueScripts);
+
     // Create Lambda function to process SQS messages and trigger Glue jobs
     const jobProcessorRole = new iam.Role(this, `${id}-JobProcessorRole`, {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
@@ -382,15 +449,96 @@ export class DataPipelineStack extends cdk.Stack {
       })
     );
 
+    // Create Lambda function to process media SQS messages and trigger Glue jobs
+    const mediaJobProcessorRole = new iam.Role(
+      this,
+      `${id}-MediaJobProcessorRole`,
+      {
+        assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
+        managedPolicies: [
+          iam.ManagedPolicy.fromAwsManagedPolicyName(
+            "service-role/AWSLambdaBasicExecutionRole"
+          ),
+        ],
+        inlinePolicies: {
+          SQSAccess: new iam.PolicyDocument({
+            statements: [
+              new iam.PolicyStatement({
+                effect: iam.Effect.ALLOW,
+                actions: [
+                  "sqs:ReceiveMessage",
+                  "sqs:DeleteMessage",
+                  "sqs:GetQueueAttributes",
+                ],
+                resources: [this.mediaIngestionQueue.queueArn],
+              }),
+            ],
+          }),
+          GlueAccess: new iam.PolicyDocument({
+            statements: [
+              new iam.PolicyStatement({
+                effect: iam.Effect.ALLOW,
+                actions: [
+                  "glue:StartJobRun",
+                  "glue:GetJobRun",
+                  "glue:GetJobRuns",
+                ],
+                resources: [
+                  `arn:aws:glue:${this.region}:${this.account}:job/${mediaProcessingJob.name}`,
+                ],
+              }),
+            ],
+          }),
+        },
+      }
+    );
+
+    this.mediaJobProcessorLambda = new lambda.Function(
+      this,
+      `${id}-MediaJobProcessorLambda`,
+      {
+        functionName: `${id}-media-job-processor`,
+        runtime: lambda.Runtime.PYTHON_3_11,
+        handler: "main.lambda_handler",
+        code: lambda.Code.fromAsset("lambda/mediaJobProcessor"),
+        timeout: Duration.minutes(4),
+        memorySize: 512,
+        role: mediaJobProcessorRole,
+        environment: {
+          REGION: this.region,
+          MAX_CONCURRENT_GLUE_JOBS: "10",
+          GLUE_JOB_NAME: mediaProcessingJob.name!,
+        },
+      }
+    );
+
+    // Connect media SQS queue to Lambda function
+    this.mediaJobProcessorLambda.addEventSource(
+      new lambdaEventSources.SqsEventSource(this.mediaIngestionQueue, {
+        batchSize: 1,
+        maxConcurrency: 10,
+      })
+    );
+
     // Output the Glue job name
     new cdk.CfnOutput(this, "GlueJobName", {
       value: dataProcessingJob.name!,
       description: "Name of the Glue data processing job",
     });
 
+    new cdk.CfnOutput(this, "MediaGlueJobName", {
+      value: mediaProcessingJob.name!,
+      description: "Name of the Glue media processing job",
+    });
+
     new cdk.CfnOutput(this, "GlueBucketName", {
       value: this.glueBucket.bucketName,
       description: "S3 bucket for Glue scripts and assets",
+    });
+
+    new cdk.CfnOutput(this, "MediaIngestionQueueUrl", {
+      value: this.mediaIngestionQueue.queueUrl,
+      description: "URL of the media ingestion SQS queue",
     });
   }
 }

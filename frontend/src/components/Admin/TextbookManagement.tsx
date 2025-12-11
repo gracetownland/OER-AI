@@ -56,6 +56,13 @@ export default function TextbookManagement() {
     type: "success" | "error" | null;
     message: string;
   }>({ type: null, message: "" });
+  const [isMediaUploadOpen, setIsMediaUploadOpen] = useState(false);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [mediaUploadStatus, setMediaUploadStatus] = useState<{
+    type: "success" | "error" | null;
+    message: string;
+  }>({ type: null, message: "" });
 
   const handleFileSelect = (selectedFile: File) => {
     setUploadStatus({ type: null, message: "" });
@@ -94,13 +101,15 @@ export default function TextbookManagement() {
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
-      // 1. Get pre-signed URL
+      // 1. Get pre-signed URL for textbook upload
       const presignedResponse = await fetch(
         `${
           import.meta.env.VITE_API_ENDPOINT
         }/generate-presigned-url?file_name=${encodeURIComponent(
           file.name
-        )}&content_type=${encodeURIComponent(file.type || "text/csv")}`,
+        )}&content_type=${encodeURIComponent(
+          file.type || "text/csv"
+        )}&upload_type=textbook`,
         {
           headers: {
             Authorization: token,
@@ -146,6 +155,100 @@ export default function TextbookManagement() {
       });
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleMediaFileSelect = (selectedFile: File) => {
+    setMediaUploadStatus({ type: null, message: "" });
+
+    // Validate file type
+    if (
+      !selectedFile.name.endsWith(".csv") &&
+      selectedFile.type !== "text/csv"
+    ) {
+      setMediaUploadStatus({
+        type: "error",
+        message: "Only CSV files are allowed.",
+      });
+      return;
+    }
+
+    // Validate file size (50MB)
+    if (selectedFile.size > 50 * 1024 * 1024) {
+      setMediaUploadStatus({
+        type: "error",
+        message: "File size must be less than 50MB.",
+      });
+      return;
+    }
+
+    setMediaFile(selectedFile);
+  };
+
+  const handleMediaUpload = async () => {
+    if (!mediaFile) return;
+
+    try {
+      setUploadingMedia(true);
+      setMediaUploadStatus({ type: null, message: "" });
+
+      const session = await AuthService.getAuthSession(true);
+      const token = session.tokens.idToken;
+
+      // 1. Get pre-signed URL for media upload
+      const presignedResponse = await fetch(
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/generate-presigned-url?file_name=${encodeURIComponent(
+          mediaFile.name
+        )}&content_type=${encodeURIComponent(
+          mediaFile.type || "text/csv"
+        )}&upload_type=media`,
+        {
+          headers: {
+            Authorization: token,
+          },
+        }
+      );
+
+      if (!presignedResponse.ok) {
+        throw new Error("Failed to generate upload URL");
+      }
+
+      const { presignedUrl } = await presignedResponse.json();
+
+      // 2. Upload file to S3
+      const uploadResponse = await fetch(presignedUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": mediaFile.type || "text/csv",
+        },
+        body: mediaFile,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Failed to upload file to S3");
+      }
+
+      setMediaUploadStatus({
+        type: "success",
+        message: "Media CSV uploaded successfully. Processing started.",
+      });
+
+      // Close dialog after a short delay
+      setTimeout(() => {
+        setIsMediaUploadOpen(false);
+        setMediaFile(null);
+        setMediaUploadStatus({ type: null, message: "" });
+      }, 2000);
+    } catch (err) {
+      console.error("Media upload error:", err);
+      setMediaUploadStatus({
+        type: "error",
+        message: err instanceof Error ? err.message : "Upload failed",
+      });
+    } finally {
+      setUploadingMedia(false);
     }
   };
 
@@ -384,131 +487,262 @@ export default function TextbookManagement() {
           <h3 className="text-xl font-semibold text-gray-900">
             Textbook Management
           </h3>
-          <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-[#2c5f7c] hover:bg-[#234d63]">
-                <Upload className="mr-2 h-4 w-4" />
-                Add Textbooks (CSV)
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Upload Textbook CSV</DialogTitle>
-                <DialogDescription>
-                  Upload a detailed CSV file containing textbook metadata,
-                  chapters, and content links. Max size 50MB.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                {!file ? (
-                  <div
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer"
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const droppedFile = e.dataTransfer.files[0];
-                      if (droppedFile) handleFileSelect(droppedFile);
-                    }}
-                    onClick={() =>
-                      document.getElementById("csv-upload")?.click()
-                    }
-                  >
-                    <div className="flex flex-col items-center gap-2">
-                      <Upload className="h-10 w-10 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-600">
-                        Drag and drop your CSV here
-                      </span>
-                      <span className="text-xs text-gray-400">
-                        or click to browse
-                      </span>
-                    </div>
-                    <Input
-                      id="csv-upload"
-                      type="file"
-                      className="hidden"
-                      accept=".csv"
-                      onChange={(e) => {
-                        const selectedFile = e.target.files?.[0];
-                        if (selectedFile) handleFileSelect(selectedFile);
+          <div className="flex gap-2">
+            <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
+              <DialogTrigger asChild>
+                <Button className="bg-[#2c5f7c] hover:bg-[#234d63]">
+                  <Upload className="mr-2 h-4 w-4" />
+                  Add Textbooks (CSV)
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Upload Textbook CSV</DialogTitle>
+                  <DialogDescription>
+                    Upload a detailed CSV file containing textbook metadata,
+                    chapters, and content links. Max size 50MB.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  {!file ? (
+                    <div
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const droppedFile = e.dataTransfer.files[0];
+                        if (droppedFile) handleFileSelect(droppedFile);
                       }}
-                    />
-                  </div>
-                ) : (
-                  <div className="border rounded-lg p-4 bg-gray-50">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2 overflow-hidden">
-                        <FileText className="h-5 w-5 text-[#2c5f7c] flex-shrink-0" />
-                        <span className="text-sm font-medium truncate">
-                          {file.name}
+                      onClick={() =>
+                        document.getElementById("csv-upload")?.click()
+                      }
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="h-10 w-10 text-gray-400" />
+                        <span className="text-sm font-medium text-gray-600">
+                          Drag and drop your CSV here
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          or click to browse
                         </span>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-6 w-6 p-0 text-gray-500 hover:text-red-600"
-                        onClick={() => {
-                          setFile(null);
-                          setUploadStatus({ type: null, message: "" });
+                      <Input
+                        id="csv-upload"
+                        type="file"
+                        className="hidden"
+                        accept=".csv"
+                        onChange={(e) => {
+                          const selectedFile = e.target.files?.[0];
+                          if (selectedFile) handleFileSelect(selectedFile);
                         }}
-                        disabled={uploading}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      />
                     </div>
-                    <div className="text-xs text-gray-500 mb-2">
-                      {(file.size / (1024 * 1024)).toFixed(2)} MB
-                    </div>
-                    {uploadStatus.message && (
-                      <div
-                        className={`text-sm p-2 rounded ${
-                          uploadStatus.type === "success"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {uploadStatus.message}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="text-xs text-gray-500">
-                  <p className="font-medium mb-1">Required CSV Columns:</p>
-                  <code className="bg-gray-100 px-1 py-0.5 rounded">
-                    Title, Author, Source (url), Book ID, others will be added
-                    to the metadata
-                  </code>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setIsUploadOpen(false);
-                    setFile(null);
-                    setUploadStatus({ type: null, message: "" });
-                  }}
-                  disabled={uploading}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="bg-[#2c5f7c] hover:bg-[#234d63]"
-                  onClick={handleUpload}
-                  disabled={!file || uploading}
-                >
-                  {uploading ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
-                    </>
                   ) : (
-                    "Upload & Process"
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <FileText className="h-5 w-5 text-[#2c5f7c] flex-shrink-0" />
+                          <span className="text-sm font-medium truncate">
+                            {file.name}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-gray-500 hover:text-red-600"
+                          onClick={() => {
+                            setFile(null);
+                            setUploadStatus({ type: null, message: "" });
+                          }}
+                          disabled={uploading}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {(file.size / (1024 * 1024)).toFixed(2)} MB
+                      </div>
+                      {uploadStatus.message && (
+                        <div
+                          className={`text-sm p-2 rounded ${
+                            uploadStatus.type === "success"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {uploadStatus.message}
+                        </div>
+                      )}
+                    </div>
                   )}
+
+                  <div className="text-xs text-gray-500">
+                    <p className="font-medium mb-1">Required CSV Columns:</p>
+                    <code className="bg-gray-100 px-1 py-0.5 rounded">
+                      Title, Author, Source (url), Book ID, others will be added
+                      to the metadata
+                    </code>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsUploadOpen(false);
+                      setFile(null);
+                      setUploadStatus({ type: null, message: "" });
+                    }}
+                    disabled={uploading}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="bg-[#2c5f7c] hover:bg-[#234d63]"
+                    onClick={handleUpload}
+                    disabled={!file || uploading}
+                  >
+                    {uploading ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      "Upload & Process"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog
+              open={isMediaUploadOpen}
+              onOpenChange={setIsMediaUploadOpen}
+            >
+              <DialogTrigger asChild>
+                <Button className="bg-[#3d7a9a] hover:bg-[#2c5f7c]">
+                  <Upload className="mr-2 h-4 w-4" />
+                  Add Media (CSV)
                 </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Upload Media CSV</DialogTitle>
+                  <DialogDescription>
+                    Upload a CSV file containing media items (transcripts, PDFs,
+                    PPTs) for textbooks. Max size 50MB.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  {!mediaFile ? (
+                    <div
+                      className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:bg-gray-50 transition-colors cursor-pointer"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const droppedFile = e.dataTransfer.files[0];
+                        if (droppedFile) handleMediaFileSelect(droppedFile);
+                      }}
+                      onClick={() =>
+                        document.getElementById("media-csv-upload")?.click()
+                      }
+                    >
+                      <div className="flex flex-col items-center gap-2">
+                        <Upload className="h-10 w-10 text-gray-400" />
+                        <span className="text-sm font-medium text-gray-600">
+                          Drag and drop your CSV here
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          or click to browse
+                        </span>
+                      </div>
+                      <Input
+                        id="media-csv-upload"
+                        type="file"
+                        className="hidden"
+                        accept=".csv"
+                        onChange={(e) => {
+                          const selectedFile = e.target.files?.[0];
+                          if (selectedFile) handleMediaFileSelect(selectedFile);
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <FileText className="h-5 w-5 text-[#2c5f7c] flex-shrink-0" />
+                          <span className="text-sm font-medium truncate">
+                            {mediaFile.name}
+                          </span>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-gray-500 hover:text-red-600"
+                          onClick={() => {
+                            setMediaFile(null);
+                            setMediaUploadStatus({ type: null, message: "" });
+                          }}
+                          disabled={uploadingMedia}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {(mediaFile.size / (1024 * 1024)).toFixed(2)} MB
+                      </div>
+                      {mediaUploadStatus.message && (
+                        <div
+                          className={`text-sm p-2 rounded ${
+                            mediaUploadStatus.type === "success"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-red-100 text-red-700"
+                          }`}
+                        >
+                          {mediaUploadStatus.message}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="text-xs text-gray-500">
+                    <p className="font-medium mb-1">Required CSV Columns:</p>
+                    <code className="bg-gray-100 px-1 py-0.5 rounded">
+                      Book Title, Media title, raw_media_url, media_type,
+                      Chapter title, Chapter URL
+                    </code>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsMediaUploadOpen(false);
+                      setMediaFile(null);
+                      setMediaUploadStatus({ type: null, message: "" });
+                    }}
+                    disabled={uploadingMedia}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="bg-[#2c5f7c] hover:bg-[#234d63]"
+                    onClick={handleMediaUpload}
+                    disabled={!mediaFile || uploadingMedia}
+                  >
+                    {uploadingMedia ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      "Upload & Process"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
 
         <Card className="border-gray-200 shadow-sm">
