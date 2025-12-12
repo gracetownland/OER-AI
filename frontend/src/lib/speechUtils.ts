@@ -9,8 +9,12 @@ export function sanitizeForSpeech(text: string): string {
   t = t.replace(/\[(.*?)\]\((.*?)\)/g, "$1");
   // Remove images
   t = t.replace(/!\[(.*?)\]\((.*?)\)/g, "");
-  // Remove HTML tags
-  t = t.replace(/<[^>]+>/g, "");
+  // Remove HTML tags iteratively to prevent injection via nested tags
+  let previous = "";
+  while (previous !== t) {
+    previous = t;
+    t = t.replace(/<[^>]+>/g, "");
+  }
   // Collapse whitespace
   t = t.replace(/\s+/g, " ").trim();
   return t;
