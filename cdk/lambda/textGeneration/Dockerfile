@@ -6,7 +6,7 @@ RUN yum update -y glib2 \
     && yum clean all
 
 # Install system dependencies for psycopg[binary] and build tools for numpy
-# NOTE: If you don't actually need psycopg/numpy, you can remove this block to shrink the image.
+# NOTE: If you don't actually need psycopg/numpy, you can remove this block to shrink the image. 
 RUN yum -y install postgresql-devel gcc libpq gcc-c++ \
     && yum clean all \
     && rm -rf /var/cache/yum
