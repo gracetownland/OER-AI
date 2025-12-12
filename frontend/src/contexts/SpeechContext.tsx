@@ -95,8 +95,12 @@ export const SpeechProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     utterText = utterText.replace(/```[\s\S]*?```/g, ""); // remove code blocks
     utterText = utterText.replace(/`([^`]+)`/g, "$1"); // inline code
     utterText = utterText.replace(/\[(.*?)\]\((.*?)\)/g, "$1"); // markdown links -> link text
-    // strip HTML tags just in case
-    utterText = utterText.replace(/<[^>]+>/g, "");
+    // strip HTML tags just in case (iterative to avoid incomplete removal)
+    let previousUtterText;
+    do {
+      previousUtterText = utterText;
+      utterText = utterText.replace(/<[^>]+>/g, "");
+    } while (utterText !== previousUtterText);
     // Trim and collapse whitespace
     utterText = utterText.replace(/\s+/g, " ").trim();
 
