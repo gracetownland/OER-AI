@@ -119,9 +119,99 @@ export default function AIChatPage() {
     createNewChatSession,
   ]);
 
+  const [webSocketToken, setWebSocketToken] = useState<string | null>(null);
+
   // WebSocket configuration
-  const webSocketUrl = useMemo(() => import.meta.env.VITE_WEBSOCKET_URL, []);
-  console.log("[WebSocket] Attempting connection to:", webSocketUrl);
+  const baseWebSocketUrl = useMemo(() => import.meta.env.VITE_WEBSOCKET_URL, []);
+  const webSocketUrl = useMemo(() => {
+    if (!baseWebSocketUrl || !webSocketToken) {
+      return null;
+    }
+
+    try {
+      const url = new URL(baseWebSocketUrl);
+      url.searchParams.set("token", webSocketToken);
+      return url.toString();
+    } catch (error) {
+      console.error("[WebSocket] Invalid base URL:", error);
+      return null;
+    }
+  }, [baseWebSocketUrl, webSocketToken]);
+
+  useEffect(() => {
+    if (!baseWebSocketUrl) {
+      console.warn("[WebSocket] Base URL not configured");
+      return;
+    }
+
+    console.log("[WebSocket] Preparing connection", {
+      url: baseWebSocketUrl,
+      tokenAttached: Boolean(webSocketToken),
+    });
+  }, [baseWebSocketUrl, webSocketToken]);
+
+  useEffect(() => {
+    const apiEndpoint = import.meta.env.VITE_API_ENDPOINT;
+    if (!apiEndpoint) {
+      console.warn("[WebSocket] API endpoint not configured; skipping token fetch");
+      return;
+    }
+
+    let isActive = true;
+    let refreshTimeoutId: ReturnType<typeof window.setTimeout> | undefined;
+    const refreshDelayMs = 14 * 60 * 1000;
+    const retryDelayMs = 30 * 1000;
+
+    async function fetchToken() {
+      if (!isActive) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`${apiEndpoint}/user/publicToken`);
+        if (!response.ok) {
+          throw new Error(`Token request failed with status ${response.status}`);
+        }
+
+        const { token } = await response.json();
+        if (!isActive) {
+          return;
+        }
+
+        setWebSocketToken(token);
+        scheduleNext(refreshDelayMs);
+      } catch (error) {
+        console.error("[WebSocket] Failed to fetch streaming token:", error);
+        if (!isActive) {
+          return;
+        }
+
+        setWebSocketToken(null);
+        scheduleNext(retryDelayMs);
+      }
+    }
+
+    function scheduleNext(delay: number) {
+      if (!isActive) {
+        return;
+      }
+
+      if (refreshTimeoutId) {
+        window.clearTimeout(refreshTimeoutId);
+      }
+
+      refreshTimeoutId = window.setTimeout(fetchToken, delay);
+    }
+
+    fetchToken();
+
+    return () => {
+      isActive = false;
+      if (refreshTimeoutId) {
+        window.clearTimeout(refreshTimeoutId);
+      }
+    };
+  }, []);
 
   // WebSocket message handlers - memoized to prevent unnecessary reconnections
   const handleWebSocketMessage = useCallback(
@@ -205,15 +295,24 @@ export default function AIChatPage() {
   } = useWebSocket(webSocketUrl, {
     onMessage: handleWebSocketMessage,
     onConnect: () => {
-      console.log("[WebSocket] Connected to:", webSocketUrl);
+      console.log("[WebSocket] Connected", {
+        url: baseWebSocketUrl,
+        tokenAttached: Boolean(webSocketToken),
+      });
       console.log("Streaming: ", isStreaming);
     },
     onDisconnect: () => {
-      console.log("[WebSocket] Disconnected from:", webSocketUrl);
+      console.log("[WebSocket] Disconnected", {
+        url: baseWebSocketUrl,
+        tokenAttached: Boolean(webSocketToken),
+      });
       console.log("Streaming: ", isStreaming);
     },
     onError: (error) => {
-      console.error("[WebSocket] Error:", error, "URL:", webSocketUrl);
+      console.error("[WebSocket] Error:", error, {
+        url: baseWebSocketUrl,
+        tokenAttached: Boolean(webSocketToken),
+      });
       console.log("Streaming: ", isStreaming);
     },
   });

@@ -1540,13 +1540,21 @@ export class ApiGatewayStack extends cdk.Stack {
     );
 
     // Connect Lambda
-    const connectFunction = new lambda.Function(this, `${id}-ConnectFunction`, {
-      functionName: `${id}-ConnectFunction`,
-      runtime: lambda.Runtime.NODEJS_20_X,
-      handler: "connect.handler",
-      code: lambda.Code.fromAsset("lambda/websocket"),
-      timeout: cdk.Duration.seconds(30),
-    });
+    const connectFunction = new lambda.Function(
+      this,
+      `${id}-ConnectFunction`,
+      {
+        functionName: `${id}-ConnectFunction`,
+        runtime: lambda.Runtime.NODEJS_22_X,
+        handler: "connect.handler",
+        code: lambda.Code.fromAsset("lambda/websocket"),
+        timeout: cdk.Duration.seconds(30),
+        environment: {
+          JWT_SECRET: jwtSecret.secretArn,
+        },
+        layers: [jwt],
+      }
+    );
 
     // Disconnect Lambda
     const disconnectFunction = new lambda.Function(
@@ -1554,7 +1562,7 @@ export class ApiGatewayStack extends cdk.Stack {
       `${id}-DisconnectFunction`,
       {
         functionName: `${id}-DisconnectFunction`,
-        runtime: lambda.Runtime.NODEJS_20_X,
+        runtime: lambda.Runtime.NODEJS_22_X,
         handler: "disconnect.handler",
         code: lambda.Code.fromAsset("lambda/websocket"),
         timeout: cdk.Duration.seconds(30),
@@ -1563,7 +1571,7 @@ export class ApiGatewayStack extends cdk.Stack {
 
     // Default route Lambda for handling messages
     const defaultFunction = new lambda.Function(this, `${id}-DefaultFunction`, {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: "default.handler",
       code: lambda.Code.fromAsset("lambda/websocket"),
       timeout: cdk.Duration.seconds(30),
@@ -1586,6 +1594,7 @@ export class ApiGatewayStack extends cdk.Stack {
     disconnectFunction.addToRolePolicy(wsPolicy);
     defaultFunction.addToRolePolicy(wsPolicy);
 
+    jwtSecret.grantRead(connectFunction);
     // Grant the default function permission to invoke the text generation function
     textGenLambdaDockerFunc.grantInvoke(defaultFunction);
 
