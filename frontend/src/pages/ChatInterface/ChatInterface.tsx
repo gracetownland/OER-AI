@@ -158,7 +158,7 @@ export default function AIChatPage() {
     }
 
     let isActive = true;
-    let refreshTimeoutId: ReturnType<typeof window.setTimeout> | undefined;
+    let refreshTimeoutId: number | undefined;
     const refreshDelayMs = 14 * 60 * 1000;
     const retryDelayMs = 30 * 1000;
 
@@ -196,18 +196,18 @@ export default function AIChatPage() {
         return;
       }
 
-      if (refreshTimeoutId) {
+      if (refreshTimeoutId !== undefined) {
         window.clearTimeout(refreshTimeoutId);
       }
 
-      refreshTimeoutId = window.setTimeout(fetchToken, delay);
+      refreshTimeoutId = window.setTimeout(fetchToken, delay) as unknown as number;
     }
 
     fetchToken();
 
     return () => {
       isActive = false;
-      if (refreshTimeoutId) {
+      if (refreshTimeoutId !== undefined) {
         window.clearTimeout(refreshTimeoutId);
       }
     };
