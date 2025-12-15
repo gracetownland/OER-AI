@@ -458,6 +458,7 @@ def get_response_streaming(
         logger.info("Starting to stream response using RAG chain...")
         full_response = ""
         sources_used = []
+        token_usage = None  # Will store actual token usage from Bedrock
         
         try:
             # Create conversational RAG chain using helper function
@@ -490,6 +491,28 @@ def get_response_streaming(
                             logger.error(f"WebSocket connection closed during streaming: {chunk_error}")
                             logger.error(f"Processing time so far: {time.time() - start_time:.2f} seconds")
                             break
+                    
+                    # Try to extract token usage from the chunk
+                    # Check for usage_metadata first (newer format)
+                    if hasattr(chunk["answer"], 'usage_metadata') and chunk["answer"].usage_metadata:
+                        usage = chunk["answer"].usage_metadata
+                        token_usage = {
+                            'input_tokens': usage.get('input_tokens', 0),
+                            'output_tokens': usage.get('output_tokens', 0),
+                            'total_tokens': usage.get('total_tokens', 0)
+                        }
+                        logger.info(f"Captured token usage from usage_metadata: {token_usage}")
+                    # Fall back to response_metadata with amazon-bedrock-invocationMetrics
+                    elif hasattr(chunk["answer"], 'response_metadata') and chunk["answer"].response_metadata:
+                        metrics = chunk["answer"].response_metadata.get('amazon-bedrock-invocationMetrics')
+                        if metrics:
+                            token_usage = {
+                                'input_tokens': metrics.get('inputTokenCount', 0),
+                                'output_tokens': metrics.get('outputTokenCount', 0),
+                                'total_tokens': metrics.get('inputTokenCount', 0) + metrics.get('outputTokenCount', 0)
+                            }
+                            logger.info(f"Captured token usage from invocationMetrics: {token_usage}")
+                
                 # Extract sources from context if available
                 if "context" in chunk:
                     docs = chunk["context"]
@@ -584,11 +607,17 @@ def get_response_streaming(
         logger.info(f"Streaming response completed in {end_time - start_time:.2f} seconds")
         logger.info(f"Response length: {len(full_response)} characters")
         logger.info(f"Sources used: {sources_used}")
+        if token_usage:
+            logger.info(f"Token usage: {token_usage}")
         
         result_dict = {
             "response": full_response,
             "sources_used": sources_used,
         }
+        
+        # Include token usage if captured
+        if token_usage:
+            result_dict["token_usage"] = token_usage
         
         # Include session name if generated
         if session_name:

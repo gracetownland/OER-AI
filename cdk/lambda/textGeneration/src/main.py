@@ -7,6 +7,11 @@ from langchain_aws import BedrockEmbeddings
 from helpers.vectorstore import get_textbook_retriever
 from helpers.chat import get_bedrock_llm, get_response_streaming, get_response, update_session_name
 from helpers.faq_cache import check_faq_cache, cache_faq, stream_cached_response
+from helpers.token_limit_helper import (
+    get_user_session_from_chat_session,
+    check_and_update_token_limit,
+    get_session_token_status
+)
 
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
@@ -22,6 +27,7 @@ BEDROCK_REGION_PARAM = os.environ.get("BEDROCK_REGION_PARAM")
 GUARDRAIL_ID_PARAM = os.environ.get("GUARDRAIL_ID_PARAM")
 WEBSOCKET_API_ENDPOINT = os.environ.get("WEBSOCKET_API_ENDPOINT", "")
 TABLE_NAME_PARAM = os.environ.get("TABLE_NAME_PARAM")
+DAILY_TOKEN_LIMIT_PARAM = os.environ.get("DAILY_TOKEN_LIMIT_PARAM")
 # AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
@@ -111,6 +117,24 @@ def connect_to_db():
             logger.error(f"Failed to connect to database: {e}")
             raise
     return connection
+
+def estimate_token_count(text: str) -> int:
+    """
+    Estimate the number of tokens in a text string.
+    Uses a simple word-based approximation: ~1.3 tokens per word for English text.
+    
+    Args:
+        text: The text to estimate tokens for
+    
+    Returns:
+        Estimated token count
+    """
+    if not text:
+        return 0
+    # Simple approximation: split by whitespace and multiply by 1.3
+    word_count = len(text.split())
+    return int(word_count * 1.3)
+
 
 
 
@@ -321,6 +345,87 @@ def handler(event, context):
         # Connect to database for custom prompts and logging
         connection = connect_to_db()
         
+        # Pre-check: Verify user hasn't exceeded daily token limit before processing
+        if chat_session_id and DAILY_TOKEN_LIMIT_PARAM:
+            try:
+                # Get user_session_id from chat_session_id
+                user_session_id = get_user_session_from_chat_session(connection, chat_session_id)
+                
+                if user_session_id:
+                    # Check current token status
+                    token_status = get_session_token_status(
+                        connection=connection,
+                        user_session_id=user_session_id,
+                        global_limit_param_name=DAILY_TOKEN_LIMIT_PARAM,
+                        ssm_client=ssm_client
+                    )
+                    
+                    # Check if user has already exceeded their limit
+                    daily_limit = token_status.get('daily_limit')
+                    tokens_used = token_status.get('tokens_used', 0)
+                    remaining_tokens = token_status.get('remaining_tokens', 0)
+                    
+                    # If limit is set (not infinity) and user has no remaining tokens
+                    if daily_limit != float('inf') and remaining_tokens <= 0:
+                        hours_until_reset = token_status.get('hours_until_reset', 0)
+                        reset_time = token_status.get('reset_time', '')
+                        
+                        error_message = f"You have reached your daily token limit of {daily_limit:,} tokens. Your limit will reset in {hours_until_reset:.1f} hours."
+                        
+                        logger.warning(f"Token limit exceeded for user_session {user_session_id}: {tokens_used}/{daily_limit}")
+                        
+                        # For WebSocket, send error message
+                        if is_websocket:
+                            try:
+                                connection_id = event['requestContext']['connectionId']
+                                domain_name = event['requestContext']['domainName']
+                                stage = event['requestContext']['stage']
+                                websocket_endpoint = f"https://{domain_name}/{stage}"
+                                apigatewaymanagementapi = boto3.client('apigatewaymanagementapi', endpoint_url=websocket_endpoint)
+                                
+                                apigatewaymanagementapi.post_to_connection(
+                                    ConnectionId=connection_id,
+                                    Data=json.dumps({
+                                        "type": "error",
+                                        "message": error_message,
+                                        "error_code": "TOKEN_LIMIT_EXCEEDED"
+                                    })
+                                )
+                            except Exception as ws_error:
+                                logger.error(f"Failed to send token limit error via WebSocket: {ws_error}")
+                        
+                        # Return 429 Too Many Requests
+                        return {
+                            "statusCode": 429,
+                            "headers": {
+                                "Content-Type": "application/json",
+                                "Access-Control-Allow-Headers": "*",
+                                "Access-Control-Allow-Origin": "*",
+                                "Access-Control-Allow-Methods": "*"
+                            },
+                            "body": json.dumps({
+                                "error": "Daily token limit exceeded",
+                                "message": error_message,
+                                "usage_info": {
+                                    "tokens_used": tokens_used,
+                                    "daily_limit": daily_limit,
+                                    "remaining_tokens": 0,
+                                    "hours_until_reset": hours_until_reset,
+                                    "reset_time": reset_time
+                                }
+                            })
+                        }
+                    
+                    # Log current status
+                    if daily_limit != float('inf'):
+                        logger.info(f"Token pre-check passed. Current usage: {tokens_used}/{daily_limit}, Remaining: {remaining_tokens}")
+                    else:
+                        logger.info(f"Token tracking enabled but no limit set (unlimited)")
+                        
+            except Exception as token_error:
+                logger.error(f"Error in token pre-check: {token_error}", exc_info=True)
+                # Continue processing even if pre-check fails (fail open)
+        
         # Check FAQ cache first for WebSocket requests (only non-chat-session queries)
         cached_response = None
         from_cache = False
@@ -411,6 +516,49 @@ def handler(event, context):
                     "response": "I apologize, but I'm experiencing technical difficulties at the moment. Our team has been notified of the issue.",
                     "sources_used": []
                 }
+        
+        # Track token usage after processing (only if chat_session_id is provided and not from cache)
+        if chat_session_id and DAILY_TOKEN_LIMIT_PARAM and not from_cache:
+            try:
+                # Get user_session_id from chat_session_id
+                user_session_id = get_user_session_from_chat_session(connection, chat_session_id)
+                
+                if user_session_id:
+                    # Get actual token usage from response_data if available
+                    token_usage = response_data.get('token_usage')
+                    
+                    if token_usage:
+                        # Use actual token count from Bedrock
+                        tokens_used = token_usage.get('total_tokens', 0)
+                        logger.info(f"Using actual token usage from Bedrock: {tokens_used} tokens (input: {token_usage.get('input_tokens', 0)}, output: {token_usage.get('output_tokens', 0)})")
+                    else:
+                        # Fallback to estimation if actual usage not available
+                        input_tokens = estimate_token_count(question)
+                        output_tokens = estimate_token_count(response_data.get('response', ''))
+                        tokens_used = input_tokens + output_tokens
+                        logger.info(f"Using estimated token usage: {tokens_used} tokens (input: {input_tokens}, output: {output_tokens})")
+                    
+                    # Update token count in database
+                    can_proceed, usage_info = check_and_update_token_limit(
+                        connection=connection,
+                        user_session_id=user_session_id,
+                        tokens_to_add=tokens_used,
+                        global_limit_param_name=DAILY_TOKEN_LIMIT_PARAM,
+                        ssm_client=ssm_client
+                    )
+                    
+                    if can_proceed:
+                        logger.info(f"Token usage tracked successfully. Total: {usage_info.get('tokens_used')}/{usage_info.get('daily_limit')}, Remaining: {usage_info.get('remaining_tokens')}")
+                    else:
+                        # This shouldn't happen in post-processing, but log it
+                        logger.warning(f"Token limit would be exceeded after processing: {usage_info.get('message')}")
+                        # Note: We don't reject the response since it's already been generated
+                        # This is just for tracking purposes
+                else:
+                    logger.warning(f"Could not find user_session for chat_session {chat_session_id}, skipping token tracking")
+            except Exception as token_error:
+                logger.error(f"Error tracking token usage: {token_error}", exc_info=True)
+                # Continue even if token tracking fails (fail open)
         
         try:
             # Log the interaction for analytics purposes
