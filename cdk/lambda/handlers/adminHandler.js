@@ -108,6 +108,12 @@ exports.handler = async (event) => {
 
       // GET /admin/textbooks - Get all textbooks with user and question counts
       case "GET /admin/textbooks":
+        const adminLimit = Math.min(
+          parseInt(event.queryStringParameters?.limit) || 50,
+          100
+        );
+        const adminOffset = parseInt(event.queryStringParameters?.offset) || 0;
+
         // Query to get textbooks with aggregated user and question counts
         const textbooksData = await sqlConnection`
           SELECT 
@@ -123,13 +129,18 @@ exports.handler = async (event) => {
             t.created_at,
             t.updated_at,
             COUNT(DISTINCT cs.user_session_id) as user_count,
-            COUNT(DISTINCT ui.id) as question_count
+            COUNT(DISTINCT ui.id) as question_count,
+            COUNT(*) OVER() as total_count
           FROM textbooks t
           LEFT JOIN chat_sessions cs ON t.id = cs.textbook_id
           LEFT JOIN user_interactions ui ON cs.id = ui.chat_session_id
           GROUP BY t.id, t.title, t.authors, t.publisher, t.publish_date, t.summary, t.language, t.level, t.status, t.created_at, t.updated_at
           ORDER BY t.created_at DESC
+          LIMIT ${adminLimit} OFFSET ${adminOffset}
         `;
+
+        const adminTotal =
+          textbooksData.length > 0 ? parseInt(textbooksData[0].total_count) : 0;
 
         // Format the response
         const formattedTextbooks = textbooksData.map((book) => ({
@@ -149,7 +160,15 @@ exports.handler = async (event) => {
         }));
 
         response.statusCode = 200;
-        response.body = JSON.stringify({ textbooks: formattedTextbooks });
+        response.body = JSON.stringify({
+          textbooks: formattedTextbooks,
+          pagination: {
+            limit: adminLimit,
+            offset: adminOffset,
+            total: adminTotal,
+            hasMore: adminOffset + adminLimit < adminTotal,
+          },
+        });
         break;
 
       // GET /admin/textbooks/{textbook_id} - Get single textbook with detailed information
@@ -442,6 +461,12 @@ exports.handler = async (event) => {
           break;
         }
 
+        const faqLimit = Math.min(
+          parseInt(event.queryStringParameters?.limit) || 50,
+          100
+        );
+        const faqOffset = parseInt(event.queryStringParameters?.offset) || 0;
+
         const faqs = await sqlConnection`
           SELECT 
             id,
@@ -449,15 +474,27 @@ exports.handler = async (event) => {
             answer_text,
             usage_count,
             last_used_at,
-            cached_at
+            cached_at,
+            COUNT(*) OVER() as total_count
           FROM faq_cache
           WHERE textbook_id = ${faqTextbookId}
           ORDER BY usage_count DESC, last_used_at DESC
-          LIMIT 50
+          LIMIT ${faqLimit} OFFSET ${faqOffset}
         `;
 
+        const faqTotal = faqs.length > 0 ? parseInt(faqs[0].total_count) : 0;
+        const faqList = faqs.map(({ total_count, ...faq }) => faq);
+
         response.statusCode = 200;
-        response.body = JSON.stringify({ faqs });
+        response.body = JSON.stringify({
+          faqs: faqList,
+          pagination: {
+            limit: faqLimit,
+            offset: faqOffset,
+            total: faqTotal,
+            hasMore: faqOffset + faqLimit < faqTotal,
+          },
+        });
         break;
 
       // GET /admin/textbooks/{textbook_id}/shared_prompts - Get shared user prompts for a specific textbook
@@ -469,6 +506,12 @@ exports.handler = async (event) => {
           break;
         }
 
+        const promptLimit = Math.min(
+          parseInt(event.queryStringParameters?.limit) || 50,
+          100
+        );
+        const promptOffset = parseInt(event.queryStringParameters?.offset) || 0;
+
         const sharedPrompts = await sqlConnection`
           SELECT 
             id,
@@ -479,15 +522,30 @@ exports.handler = async (event) => {
             role,
             reported,
             created_at,
-            updated_at
+            updated_at,
+            COUNT(*) OVER() as total_count
           FROM shared_user_prompts
           WHERE textbook_id = ${promptTextbookId}
           ORDER BY created_at DESC
-          LIMIT 50
+          LIMIT ${promptLimit} OFFSET ${promptOffset}
         `;
 
+        const promptTotal =
+          sharedPrompts.length > 0 ? parseInt(sharedPrompts[0].total_count) : 0;
+        const promptList = sharedPrompts.map(
+          ({ total_count, ...prompt }) => prompt
+        );
+
         response.statusCode = 200;
-        response.body = JSON.stringify({ prompts: sharedPrompts });
+        response.body = JSON.stringify({
+          prompts: promptList,
+          pagination: {
+            limit: promptLimit,
+            offset: promptOffset,
+            total: promptTotal,
+            hasMore: promptOffset + promptLimit < promptTotal,
+          },
+        });
         break;
 
       // GET /admin/analytics/practice - Get aggregated practice material analytics
@@ -612,6 +670,12 @@ exports.handler = async (event) => {
         }
 
         // Get all media items from media_items table
+        const mediaLimit = Math.min(
+          parseInt(event.queryStringParameters?.limit) || 100,
+          200
+        );
+        const mediaOffset = parseInt(event.queryStringParameters?.offset) || 0;
+
         const mediaResult = await sqlConnection`
           SELECT 
             mi.id,
@@ -620,12 +684,17 @@ exports.handler = async (event) => {
             mi.source_url,
             mi.description,
             s.title as chapter_title,
-            s.order_index as chapter_number
+            s.order_index as chapter_number,
+            COUNT(*) OVER() as total_count
           FROM media_items mi
           LEFT JOIN sections s ON mi.section_id = s.id
           WHERE mi.textbook_id = ${statusTextbookId}
           ORDER BY s.order_index, mi.media_type, mi.id
+          LIMIT ${mediaLimit} OFFSET ${mediaOffset}
         `;
+
+        const mediaTotal =
+          mediaResult.length > 0 ? parseInt(mediaResult[0].total_count) : 0;
 
         // Count images specifically
         const imageCount = mediaResult.filter(
@@ -651,6 +720,12 @@ exports.handler = async (event) => {
           media_items: mediaList,
           job_status: jobStatus,
           job_error: jobError,
+          media_pagination: {
+            limit: mediaLimit,
+            offset: mediaOffset,
+            total: mediaTotal,
+            hasMore: mediaOffset + mediaLimit < mediaTotal,
+          },
         });
         break;
 
@@ -1198,6 +1273,13 @@ exports.handler = async (event) => {
 
       // GET /admin/reported-items - Get all reported FAQs and shared prompts
       case "GET /admin/reported-items":
+        const reportedLimit = Math.min(
+          parseInt(event.queryStringParameters?.limit) || 50,
+          100
+        );
+        const reportedOffset =
+          parseInt(event.queryStringParameters?.offset) || 0;
+
         // Get reported FAQs grouped by textbook
         const reportedFAQs = await sqlConnection`
           SELECT 
@@ -1208,12 +1290,18 @@ exports.handler = async (event) => {
             f.usage_count,
             f.last_used_at,
             f.cached_at,
-            t.title as textbook_title
+            t.title as textbook_title,
+            COUNT(*) OVER() as total_count
           FROM faq_cache f
           LEFT JOIN textbooks t ON f.textbook_id = t.id
           WHERE f.reported = true
           ORDER BY f.cached_at DESC
+          LIMIT ${reportedLimit} OFFSET ${reportedOffset}
         `;
+
+        const faqsTotal =
+          reportedFAQs.length > 0 ? parseInt(reportedFAQs[0].total_count) : 0;
+        const faqsList = reportedFAQs.map(({ total_count, ...faq }) => faq);
 
         // Get reported shared prompts grouped by textbook
         const reportedPrompts = await sqlConnection`
@@ -1225,17 +1313,41 @@ exports.handler = async (event) => {
             sp.visibility,
             sp.tags,
             sp.created_at,
-            t.title as textbook_title
+            t.title as textbook_title,
+            COUNT(*) OVER() as total_count
           FROM shared_user_prompts sp
           LEFT JOIN textbooks t ON sp.textbook_id = t.id
           WHERE sp.reported = true
           ORDER BY sp.created_at DESC
+          LIMIT ${reportedLimit} OFFSET ${reportedOffset}
         `;
+
+        const promptsTotal =
+          reportedPrompts.length > 0
+            ? parseInt(reportedPrompts[0].total_count)
+            : 0;
+        const promptsList = reportedPrompts.map(
+          ({ total_count, ...prompt }) => prompt
+        );
 
         response.statusCode = 200;
         response.body = JSON.stringify({
-          reportedFAQs: reportedFAQs,
-          reportedPrompts: reportedPrompts,
+          reportedFAQs: faqsList,
+          reportedPrompts: promptsList,
+          pagination: {
+            faqs: {
+              limit: reportedLimit,
+              offset: reportedOffset,
+              total: faqsTotal,
+              hasMore: reportedOffset + reportedLimit < faqsTotal,
+            },
+            prompts: {
+              limit: reportedLimit,
+              offset: reportedOffset,
+              total: promptsTotal,
+              hasMore: reportedOffset + reportedLimit < promptsTotal,
+            },
+          },
         });
         break;
 

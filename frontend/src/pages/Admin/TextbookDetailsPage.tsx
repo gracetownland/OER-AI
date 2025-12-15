@@ -11,6 +11,7 @@ import {
   Share2,
   AlertTriangle,
   BookOpen,
+  Loader2,
 } from "lucide-react";
 import Footer from "@/components/Footer";
 import logoImage from "@/assets/OER_logo_black.png";
@@ -113,6 +114,14 @@ type IngestionStatus = {
   media_items: MediaItem[];
   job_status: string | null;
   job_error: string | null;
+  media_pagination?: PaginationInfo;
+};
+
+type PaginationInfo = {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
 };
 
 function ChartCard({
@@ -180,6 +189,16 @@ export default function TextbookDetailsPage() {
   const [timeRange, setTimeRange] = useState("3m");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Pagination states
+  const [faqsPagination, setFaqsPagination] = useState<PaginationInfo | null>(
+    null
+  );
+  const [promptsPagination, setPromptsPagination] =
+    useState<PaginationInfo | null>(null);
+  const [loadingMoreFAQs, setLoadingMoreFAQs] = useState(false);
+  const [loadingMorePrompts, setLoadingMorePrompts] = useState(false);
+  const [loadingMoreMedia, setLoadingMoreMedia] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -287,13 +306,19 @@ export default function TextbookDetailsPage() {
     }
   };
 
-  const fetchFAQs = async () => {
+  const fetchFAQs = async (offset = 0, append = false) => {
     try {
+      if (append) {
+        setLoadingMoreFAQs(true);
+      }
+
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${id}/faqs`,
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/admin/textbooks/${id}/faqs?limit=50&offset=${offset}`,
         {
           headers: {
             Authorization: token,
@@ -307,21 +332,38 @@ export default function TextbookDetailsPage() {
       }
 
       const data = await response.json();
-      setFaqs(data.faqs || []);
+      if (append) {
+        setFaqs((prev) => [...prev, ...(data.faqs || [])]);
+      } else {
+        setFaqs(data.faqs || []);
+      }
+      setFaqsPagination(data.pagination || null);
     } catch (err) {
       console.error("Error fetching FAQs:", err);
+    } finally {
+      setLoadingMoreFAQs(false);
     }
   };
 
-  const fetchSharedPrompts = async () => {
+  const handleLoadMoreFAQs = () => {
+    if (faqsPagination && faqsPagination.hasMore) {
+      fetchFAQs(faqsPagination.offset + faqsPagination.limit, true);
+    }
+  };
+
+  const fetchSharedPrompts = async (offset = 0, append = false) => {
     try {
+      if (append) {
+        setLoadingMorePrompts(true);
+      }
+
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
         `${
           import.meta.env.VITE_API_ENDPOINT
-        }/admin/textbooks/${id}/shared_prompts`,
+        }/admin/textbooks/${id}/shared_prompts?limit=50&offset=${offset}`,
         {
           headers: {
             Authorization: token,
@@ -335,21 +377,41 @@ export default function TextbookDetailsPage() {
       }
 
       const data = await response.json();
-      setSharedPrompts(data.prompts || []);
+      if (append) {
+        setSharedPrompts((prev) => [...prev, ...(data.prompts || [])]);
+      } else {
+        setSharedPrompts(data.prompts || []);
+      }
+      setPromptsPagination(data.pagination || null);
     } catch (err) {
       console.error("Error fetching shared prompts:", err);
+    } finally {
+      setLoadingMorePrompts(false);
     }
   };
 
-  const fetchIngestionStatus = async () => {
+  const handleLoadMorePrompts = () => {
+    if (promptsPagination && promptsPagination.hasMore) {
+      fetchSharedPrompts(
+        promptsPagination.offset + promptsPagination.limit,
+        true
+      );
+    }
+  };
+
+  const fetchIngestionStatus = async (offset = 0, append = false) => {
     try {
+      if (append) {
+        setLoadingMoreMedia(true);
+      }
+
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
         `${
           import.meta.env.VITE_API_ENDPOINT
-        }/admin/textbooks/${id}/ingestion_status`,
+        }/admin/textbooks/${id}/ingestion_status?limit=100&offset=${offset}`,
         {
           headers: {
             Authorization: token,
@@ -363,9 +425,32 @@ export default function TextbookDetailsPage() {
       }
 
       const data = await response.json();
-      setIngestionStatus(data);
+
+      if (append && ingestionStatus) {
+        setIngestionStatus({
+          ...data,
+          media_items: [
+            ...ingestionStatus.media_items,
+            ...(data.media_items || []),
+          ],
+        });
+      } else {
+        setIngestionStatus(data);
+      }
     } catch (err) {
       console.error("Error fetching ingestion status:", err);
+    } finally {
+      setLoadingMoreMedia(false);
+    }
+  };
+
+  const handleLoadMoreMedia = () => {
+    if (ingestionStatus?.media_pagination?.hasMore) {
+      fetchIngestionStatus(
+        ingestionStatus.media_pagination.offset +
+          ingestionStatus.media_pagination.limit,
+        true
+      );
     }
   };
 
@@ -906,6 +991,33 @@ export default function TextbookDetailsPage() {
                         </Card>
                       ))
                     )}
+
+                    {/* Pagination Controls for FAQs */}
+                    {faqsPagination && faqs.length > 0 && (
+                      <div className="mt-4 flex flex-col items-center gap-3">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {faqs.length} of {faqsPagination.total} FAQs
+                        </p>
+                        {faqsPagination.hasMore && (
+                          <Button
+                            onClick={handleLoadMoreFAQs}
+                            disabled={loadingMoreFAQs}
+                            variant="outline"
+                            size="sm"
+                            className="w-full max-w-xs"
+                          >
+                            {loadingMoreFAQs ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              "Load More FAQs"
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Shared Prompts Section */}
@@ -970,6 +1082,34 @@ export default function TextbookDetailsPage() {
                           </CardContent>
                         </Card>
                       ))
+                    )}
+
+                    {/* Pagination Controls for Prompts */}
+                    {promptsPagination && sharedPrompts.length > 0 && (
+                      <div className="mt-4 flex flex-col items-center gap-3">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {sharedPrompts.length} of{" "}
+                          {promptsPagination.total} prompts
+                        </p>
+                        {promptsPagination.hasMore && (
+                          <Button
+                            onClick={handleLoadMorePrompts}
+                            disabled={loadingMorePrompts}
+                            variant="outline"
+                            size="sm"
+                            className="w-full max-w-xs"
+                          >
+                            {loadingMorePrompts ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              "Load More Prompts"
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1103,6 +1243,34 @@ export default function TextbookDetailsPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* Pagination Controls for Media */}
+                  {ingestionStatus?.media_pagination &&
+                    ingestionStatus.media_items.length > 0 && (
+                      <div className="mt-6 flex flex-col items-center gap-3">
+                        <p className="text-sm text-muted-foreground">
+                          Showing {ingestionStatus.media_items.length} of{" "}
+                          {ingestionStatus.media_pagination.total} media items
+                        </p>
+                        {ingestionStatus.media_pagination.hasMore && (
+                          <Button
+                            onClick={handleLoadMoreMedia}
+                            disabled={loadingMoreMedia}
+                            variant="outline"
+                            className="min-w-[200px]"
+                          >
+                            {loadingMoreMedia ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Loading...
+                              </>
+                            ) : (
+                              "Load More Media"
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    )}
                 </div>
               </div>
             )}

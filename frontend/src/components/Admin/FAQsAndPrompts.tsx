@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   CheckCircle,
   XCircle,
+  Loader2,
 } from "lucide-react";
 import {
   Card,
@@ -78,6 +79,13 @@ type ReportedPrompt = {
   textbook_title: string;
 };
 
+type PaginationInfo = {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+};
+
 export default function FAQsAndPrompts() {
   // Prompt templates state
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -92,6 +100,13 @@ export default function FAQsAndPrompts() {
   const [reportedFAQs, setReportedFAQs] = useState<ReportedFAQ[]>([]);
   const [reportedPrompts, setReportedPrompts] = useState<ReportedPrompt[]>([]);
   const [loadingReported, setLoadingReported] = useState(true);
+  const [loadingMoreFAQs, setLoadingMoreFAQs] = useState(false);
+  const [loadingMorePrompts, setLoadingMorePrompts] = useState(false);
+  const [faqsPagination, setFaqsPagination] = useState<PaginationInfo | null>(
+    null
+  );
+  const [promptsPagination, setPromptsPagination] =
+    useState<PaginationInfo | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -143,14 +158,27 @@ export default function FAQsAndPrompts() {
     }
   };
 
-  const fetchReportedItems = async () => {
+  const fetchReportedItems = async (
+    offset = 0,
+    appendFAQs = false,
+    appendPrompts = false
+  ) => {
     try {
-      setLoadingReported(true);
+      if (appendFAQs) {
+        setLoadingMoreFAQs(true);
+      } else if (appendPrompts) {
+        setLoadingMorePrompts(true);
+      } else {
+        setLoadingReported(true);
+      }
+
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/admin/reported-items`,
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/admin/reported-items?limit=50&offset=${offset}`,
         {
           headers: {
             Authorization: token,
@@ -164,13 +192,45 @@ export default function FAQsAndPrompts() {
       }
 
       const data = await response.json();
-      setReportedFAQs(data.reportedFAQs);
-      setReportedPrompts(data.reportedPrompts);
+
+      if (appendFAQs) {
+        setReportedFAQs((prev) => [...prev, ...data.reportedFAQs]);
+      } else if (appendPrompts) {
+        setReportedPrompts((prev) => [...prev, ...data.reportedPrompts]);
+      } else {
+        setReportedFAQs(data.reportedFAQs);
+        setReportedPrompts(data.reportedPrompts);
+      }
+
+      setFaqsPagination(data.pagination?.faqs || null);
+      setPromptsPagination(data.pagination?.prompts || null);
     } catch (err) {
       console.error("Error fetching reported items:", err);
       // Don't set main error state to avoid blocking other functionality
     } finally {
       setLoadingReported(false);
+      setLoadingMoreFAQs(false);
+      setLoadingMorePrompts(false);
+    }
+  };
+
+  const handleLoadMoreFAQs = () => {
+    if (faqsPagination && faqsPagination.hasMore) {
+      fetchReportedItems(
+        faqsPagination.offset + faqsPagination.limit,
+        true,
+        false
+      );
+    }
+  };
+
+  const handleLoadMorePrompts = () => {
+    if (promptsPagination && promptsPagination.hasMore) {
+      fetchReportedItems(
+        promptsPagination.offset + promptsPagination.limit,
+        false,
+        true
+      );
     }
   };
 
@@ -525,6 +585,35 @@ export default function FAQsAndPrompts() {
                 </TableBody>
               </Table>
             )}
+
+            {/* Pagination Controls */}
+            {!loadingReported && faqsPagination && reportedFAQs.length > 0 && (
+              <div className="border-t border-gray-200 px-6 py-4 mt-4">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    Showing {reportedFAQs.length} of {faqsPagination.total}{" "}
+                    reported FAQs
+                  </p>
+                  {faqsPagination.hasMore && (
+                    <Button
+                      onClick={handleLoadMoreFAQs}
+                      disabled={loadingMoreFAQs}
+                      variant="outline"
+                      className="min-w-[200px]"
+                    >
+                      {loadingMoreFAQs ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        "Load More FAQs"
+                      )}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -630,6 +719,37 @@ export default function FAQsAndPrompts() {
                 </TableBody>
               </Table>
             )}
+
+            {/* Pagination Controls */}
+            {!loadingReported &&
+              promptsPagination &&
+              reportedPrompts.length > 0 && (
+                <div className="border-t border-gray-200 px-6 py-4 mt-4">
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <p className="text-sm text-muted-foreground">
+                      Showing {reportedPrompts.length} of{" "}
+                      {promptsPagination.total} reported prompts
+                    </p>
+                    {promptsPagination.hasMore && (
+                      <Button
+                        onClick={handleLoadMorePrompts}
+                        disabled={loadingMorePrompts}
+                        variant="outline"
+                        className="min-w-[200px]"
+                      >
+                        {loadingMorePrompts ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Loading...
+                          </>
+                        ) : (
+                          "Load More Prompts"
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
           </CardContent>
         </Card>
       </div>

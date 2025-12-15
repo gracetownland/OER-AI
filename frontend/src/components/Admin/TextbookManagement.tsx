@@ -8,6 +8,7 @@ import {
   FileText,
   Users,
   HelpCircle,
+  Loader2,
 } from "lucide-react";
 import { AuthService } from "@/functions/authService";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -43,12 +44,21 @@ export type TextbookData = {
   questions: number;
 };
 
+type PaginationInfo = {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+};
+
 export default function TextbookManagement() {
   const [textbooks, setTextbooks] = useState<TextbookData[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -374,60 +384,77 @@ export default function TextbookManagement() {
   };
 
   // Fetch textbooks from API
-  useEffect(() => {
-    const fetchTextbooks = async () => {
-      try {
+  const fetchTextbooks = async (offset = 0, append = false) => {
+    try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
         setLoading(true);
-        setError(null);
-
-        // Get admin token from authService
-        const session = await AuthService.getAuthSession(true);
-        const token = session.tokens.idToken;
-
-        if (!token) {
-          throw new Error("No authentication token available");
-        }
-
-        const response = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks`,
-          {
-            headers: {
-              Authorization: token,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch textbooks: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log(data);
-
-        // Transform API data to match component format
-        const transformedTextbooks = data.textbooks.map((book: any) => ({
-          id: book.id,
-          title: book.title,
-          author: book.authors?.join(", ") || "Unknown Author",
-          status: book.status || "Disabled",
-          users: book.user_count,
-          questions: book.question_count,
-        }));
-
-        setTextbooks(transformedTextbooks);
-      } catch (err) {
-        console.error("Error fetching textbooks:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load textbooks"
-        );
-      } finally {
-        setLoading(false);
       }
-    };
+      setError(null);
 
+      // Get admin token from authService
+      const session = await AuthService.getAuthSession(true);
+      const token = session.tokens.idToken;
+
+      if (!token) {
+        throw new Error("No authentication token available");
+      }
+
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/admin/textbooks?limit=50&offset=${offset}`,
+        {
+          headers: {
+            Authorization: token,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch textbooks: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(data);
+
+      // Transform API data to match component format
+      const transformedTextbooks = data.textbooks.map((book: any) => ({
+        id: book.id,
+        title: book.title,
+        author: book.authors?.join(", ") || "Unknown Author",
+        status: book.status || "Disabled",
+        users: book.user_count,
+        questions: book.question_count,
+      }));
+
+      if (append) {
+        setTextbooks((prev) => [...prev, ...transformedTextbooks]);
+      } else {
+        setTextbooks(transformedTextbooks);
+      }
+
+      setPagination(data.pagination);
+    } catch (err) {
+      console.error("Error fetching textbooks:", err);
+      setError(err instanceof Error ? err.message : "Failed to load textbooks");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
     fetchTextbooks();
   }, []);
+
+  const handleLoadMore = () => {
+    if (pagination && pagination.hasMore) {
+      fetchTextbooks(pagination.offset + pagination.limit, true);
+    }
+  };
 
   // Calculate total metrics from textbooks
   const totalUsers = textbooks.reduce(
@@ -881,6 +908,35 @@ export default function TextbookManagement() {
               </TableBody>
             </Table>
           </CardContent>
+
+          {/* Pagination Controls */}
+          {!loading && pagination && (
+            <div className="border-t border-gray-200 px-6 py-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">
+                  Showing {filteredTextbooks.length} of {pagination.total}{" "}
+                  textbooks
+                </p>
+                {pagination.hasMore && (
+                  <Button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    variant="outline"
+                    className="min-w-[200px]"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More"
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       </div>
     </div>
