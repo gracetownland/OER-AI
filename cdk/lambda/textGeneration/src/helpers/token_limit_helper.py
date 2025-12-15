@@ -6,7 +6,7 @@ Token limits are enforced based on SSM parameters.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple, Dict
 import boto3
 
@@ -84,7 +84,7 @@ def check_and_update_token_limit(
                 raise ValueError(f"User session {user_session_id} not found")
             
             current_tokens, last_updated = session_data
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             
             # Initialize if null
             if current_tokens is None:
@@ -207,7 +207,7 @@ def get_session_token_status(
                 raise ValueError(f"User session {user_session_id} not found")
             
             current_tokens, last_updated = session_data
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             
             # Initialize if null
             if current_tokens is None:
@@ -274,7 +274,7 @@ def reset_session_daily_tokens(
     """
     try:
         with connection.cursor() as cursor:
-            now = datetime.now()
+            now = datetime.now(timezone.utc)
             cursor.execute("""
                 UPDATE user_sessions 
                 SET tokens_used = 0,

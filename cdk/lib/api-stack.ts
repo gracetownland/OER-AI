@@ -1104,6 +1104,7 @@ export class ApiGatewayStack extends cdk.Stack {
           BEDROCK_REGION_PARAM: bedrockRegionParameter.parameterName,
           TABLE_NAME_PARAM: sessionTable.tableName,
           GUARDRAIL_ID_PARAM: guardrailParameter.parameterName,
+          DAILY_TOKEN_LIMIT_PARAM: dailyTokenLimitParameter.parameterName,
           //MESSAGE_LIMIT_PARAM: messageLimitParameter.parameterName,
           //APPSYNC_ENDPOINT: this.eventApi.graphqlUrl,
           //APPSYNC_API_ID: this.eventApi.apiId,
@@ -1186,6 +1187,7 @@ export class ApiGatewayStack extends cdk.Stack {
           embeddingModelParameter.parameterArn,
           bedrockRegionParameter.parameterArn,
           guardrailParameter.parameterArn,
+          dailyTokenLimitParameter.parameterArn,
           //messageLimitParameter.parameterArn,
         ],
       })
