@@ -488,7 +488,7 @@ def get_response_streaming(
                                 })
                             )
                         except Exception as chunk_error:
-                            logger.error(f"WebSocket connection closed during streaming: {chunk_error}")
+                            logger.error(f"WebSocket connection closed during streaming:  {chunk_error}")
                             logger.error(f"Processing time so far: {time.time() - start_time:.2f} seconds")
                             break
                     
