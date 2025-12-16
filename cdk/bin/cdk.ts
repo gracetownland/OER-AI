@@ -80,6 +80,7 @@ const apiStack = new ApiGatewayStack(
     ecrRepositories: cicdStack.ecrRepositories,
     codeBuildProjects: cicdStack.buildProjects,
     csvBucket: dataPipelineStack.csvBucket,
+    textbookIngestionQueue: dataPipelineStack.textbookIngestionQueue,
   }
 );
 apiStack.addDependency(cicdStack);

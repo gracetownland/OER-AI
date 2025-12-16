@@ -8,6 +8,8 @@ import {
   FileText,
   Users,
   HelpCircle,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { AuthService } from "@/functions/authService";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -43,12 +45,21 @@ export type TextbookData = {
   questions: number;
 };
 
+type PaginationInfo = {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+};
+
 export default function TextbookManagement() {
   const [textbooks, setTextbooks] = useState<TextbookData[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -63,6 +74,17 @@ export default function TextbookManagement() {
     type: "success" | "error" | null;
     message: string;
   }>({ type: null, message: "" });
+  const [reIngestDialog, setReIngestDialog] = useState<{
+    open: boolean;
+    textbookId: string | number | null;
+    isProcessing: boolean;
+  }>({ open: false, textbookId: null, isProcessing: false });
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    textbookId: string | number | null;
+    textbookTitle: string;
+    isProcessing: boolean;
+  }>({ open: false, textbookId: null, textbookTitle: "", isProcessing: false });
 
   const handleFileSelect = (selectedFile: File) => {
     setUploadStatus({ type: null, message: "" });
@@ -298,25 +320,35 @@ export default function TextbookManagement() {
     }
   };
 
-  const handleDelete = async (id: string | number) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this textbook? This action cannot be undone."
-      )
-    ) {
-      return;
-    }
+  const handleDelete = (id: string | number) => {
+    const textbook = textbooks.find((b) => b.id === id);
+    setDeleteDialog({
+      open: true,
+      textbookId: id,
+      textbookTitle: textbook?.title || "this textbook",
+      isProcessing: false,
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.textbookId) return;
+
+    setDeleteDialog((prev) => ({ ...prev, isProcessing: true }));
 
     // Optimistically remove from UI
     const originalTextbooks = [...textbooks];
-    setTextbooks(textbooks.filter((book) => book.id !== id));
+    setTextbooks(
+      textbooks.filter((book) => book.id !== deleteDialog.textbookId)
+    );
 
     try {
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${id}`,
+        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${
+          deleteDialog.textbookId
+        }`,
         {
           method: "DELETE",
           headers: {
@@ -328,25 +360,45 @@ export default function TextbookManagement() {
       if (!response.ok) {
         throw new Error("Failed to delete textbook");
       }
+
+      // Close dialog on success
+      setDeleteDialog({
+        open: false,
+        textbookId: null,
+        textbookTitle: "",
+        isProcessing: false,
+      });
     } catch (err) {
       console.error("Error deleting textbook:", err);
       // Revert on error
       setTextbooks(originalTextbooks);
       setError("Failed to delete textbook");
+      setDeleteDialog({
+        open: false,
+        textbookId: null,
+        textbookTitle: "",
+        isProcessing: false,
+      });
     }
   };
 
-  const handleRefresh = async (id: string | number) => {
-    if (!confirm("This will trigger re-ingestion of the textbook. Continue?")) {
-      return;
-    }
+  const handleRefresh = (id: string | number) => {
+    setReIngestDialog({ open: true, textbookId: id, isProcessing: false });
+  };
+
+  const confirmReIngest = async () => {
+    if (!reIngestDialog.textbookId) return;
+
+    setReIngestDialog((prev) => ({ ...prev, isProcessing: true }));
 
     try {
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${id}/refresh`,
+        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${
+          reIngestDialog.textbookId
+        }/re-ingest`,
         {
           method: "POST",
           headers: {
@@ -357,77 +409,107 @@ export default function TextbookManagement() {
       );
 
       if (!response.ok) {
-        throw new Error("Failed to refresh textbook");
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error ||
+            errorData.details ||
+            "Failed to initiate re-ingestion"
+        );
       }
 
       const data = await response.json();
-      console.log("Refresh job created:", data);
+      console.log("Re-ingestion job created:", data);
 
-      // Update the textbook status to "Ingesting"
+      // Update the textbook status to "Disabled" (Glue job will set it to "Ingesting" when it starts)
       setTextbooks(
-        textbooks.map((b) => (b.id === id ? { ...b, status: "Ingesting" } : b))
+        textbooks.map((b) =>
+          b.id === reIngestDialog.textbookId ? { ...b, status: "Disabled" } : b
+        )
       );
+
+      // Close dialog
+      setReIngestDialog({ open: false, textbookId: null, isProcessing: false });
     } catch (err) {
-      console.error("Error refreshing textbook:", err);
-      setError("Failed to refresh textbook");
+      console.error("Error initiating re-ingestion:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to initiate re-ingestion"
+      );
+      setReIngestDialog({ open: false, textbookId: null, isProcessing: false });
     }
   };
 
   // Fetch textbooks from API
-  useEffect(() => {
-    const fetchTextbooks = async () => {
-      try {
+  const fetchTextbooks = async (offset = 0, append = false) => {
+    try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
         setLoading(true);
-        setError(null);
-
-        // Get admin token from authService
-        const session = await AuthService.getAuthSession(true);
-        const token = session.tokens.idToken;
-
-        if (!token) {
-          throw new Error("No authentication token available");
-        }
-
-        const response = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks`,
-          {
-            headers: {
-              Authorization: token,
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch textbooks: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        console.log(data);
-
-        // Transform API data to match component format
-        const transformedTextbooks = data.textbooks.map((book: any) => ({
-          id: book.id,
-          title: book.title,
-          author: book.authors?.join(", ") || "Unknown Author",
-          status: book.status || "Disabled",
-          users: book.user_count,
-          questions: book.question_count,
-        }));
-
-        setTextbooks(transformedTextbooks);
-      } catch (err) {
-        console.error("Error fetching textbooks:", err);
-        setError(
-          err instanceof Error ? err.message : "Failed to load textbooks"
-        );
-      } finally {
-        setLoading(false);
       }
-    };
+      setError(null);
 
+      // Get admin token from authService
+      const session = await AuthService.getAuthSession(true);
+      const token = session.tokens.idToken;
+
+      if (!token) {
+        throw new Error("No authentication token available");
+      }
+
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/admin/textbooks?limit=50&offset=${offset}`,
+        {
+          headers: {
+            Authorization: token,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch textbooks: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log(data);
+
+      // Transform API data to match component format
+      const transformedTextbooks = data.textbooks.map((book: any) => ({
+        id: book.id,
+        title: book.title,
+        author: book.authors?.join(", ") || "Unknown Author",
+        status: book.status || "Disabled",
+        users: book.user_count,
+        questions: book.question_count,
+      }));
+
+      if (append) {
+        setTextbooks((prev) => [...prev, ...transformedTextbooks]);
+      } else {
+        setTextbooks(transformedTextbooks);
+      }
+
+      setPagination(data.pagination);
+    } catch (err) {
+      console.error("Error fetching textbooks:", err);
+      setError(err instanceof Error ? err.message : "Failed to load textbooks");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
     fetchTextbooks();
   }, []);
+
+  const handleLoadMore = () => {
+    if (pagination && pagination.hasMore) {
+      fetchTextbooks(pagination.offset + pagination.limit, true);
+    }
+  };
 
   // Calculate total metrics from textbooks
   const totalUsers = textbooks.reduce(
@@ -881,8 +963,185 @@ export default function TextbookManagement() {
               </TableBody>
             </Table>
           </CardContent>
+
+          {/* Pagination Controls */}
+          {!loading && pagination && (
+            <div className="border-t border-gray-200 px-6 py-4">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">
+                  Showing {filteredTextbooks.length} of {pagination.total}{" "}
+                  textbooks
+                </p>
+                {pagination.hasMore && (
+                  <Button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    variant="outline"
+                    className="min-w-[200px]"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Loading...
+                      </>
+                    ) : (
+                      "Load More"
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </Card>
       </div>
+
+      {/* Re-Ingestion Confirmation Dialog */}
+      <Dialog
+        open={reIngestDialog.open}
+        onOpenChange={(open) =>
+          !reIngestDialog.isProcessing &&
+          setReIngestDialog({ open, textbookId: null, isProcessing: false })
+        }
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Re-Ingest Textbook
+            </DialogTitle>
+            <DialogDescription className="space-y-3 pt-2">
+              <p className="font-semibold text-gray-900">
+                This action will delete and re-ingest ALL data for this
+                textbook:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                <li>All sections and chapters will be deleted</li>
+                <li>All associated media items will be removed</li>
+                <li>All vector embeddings will be cleared</li>
+                <li>The textbook will be re-processed and re-ingested</li>
+              </ul>
+              <p className="text-sm font-medium text-amber-700 bg-amber-50 p-3 rounded border border-amber-200">
+                ⚠️ This process cannot be undone. The textbook will be
+                unavailable during re-ingestion.
+              </p>
+              <p className="text-sm text-gray-600">
+                Do you want to continue with re-ingestion?
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() =>
+                setReIngestDialog({
+                  open: false,
+                  textbookId: null,
+                  isProcessing: false,
+                })
+              }
+              disabled={reIngestDialog.isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmReIngest}
+              disabled={reIngestDialog.isProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {reIngestDialog.isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Yes, Re-Ingest
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          !deleteDialog.isProcessing &&
+          setDeleteDialog({
+            open,
+            textbookId: null,
+            textbookTitle: "",
+            isProcessing: false,
+          })
+        }
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Textbook
+            </DialogTitle>
+            <DialogDescription className="space-y-3 pt-2">
+              <p className="font-semibold text-gray-900">
+                Are you sure you want to permanently delete "
+                {deleteDialog.textbookTitle}"?
+              </p>
+              <p className="text-sm text-gray-700">
+                This action will permanently delete:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                <li>The textbook record and all metadata</li>
+                <li>All sections and chapters</li>
+                <li>All associated media items (images, videos, etc.)</li>
+                <li>All vector embeddings</li>
+                <li>All user interactions and chat history</li>
+                <li>All ingestion job records</li>
+              </ul>
+              <p className="text-sm font-medium text-red-700 bg-red-50 p-3 rounded border border-red-200">
+                ⚠️ This action cannot be undone. All data associated with this
+                textbook will be permanently lost.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() =>
+                setDeleteDialog({
+                  open: false,
+                  textbookId: null,
+                  textbookTitle: "",
+                  isProcessing: false,
+                })
+              }
+              disabled={deleteDialog.isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleteDialog.isProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteDialog.isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Yes, Delete Permanently
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

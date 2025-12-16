@@ -2,6 +2,7 @@ import HomePageHeader from "@/components/HomePageHeader";
 import Footer from "@/components/Footer";
 import TextbookCard from "@/components/HomePage/TextbookCard";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Search } from "lucide-react";
+import { Search, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getWelcomeMessage } from "@/lib/welcomeMessage";
 import type { Textbook } from "@/types/Textbook";
@@ -25,13 +26,22 @@ type TextbookForCard = {
   logo_url?: string;
 };
 
+type PaginationInfo = {
+  limit: number;
+  offset: number;
+  total: number;
+  hasMore: boolean;
+};
+
 export default function HomePage() {
   const [userSearch, setUserSearch] = useState<string>("");
   const [textbooks, setTextbooks] = useState<Textbook[]>([]);
   const [filteredBooks, setFilteredBooks] = useState<TextbookForCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   const [welcomeMsg, setWelcomeMsg] = useState<string | null>(null);
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null);
 
   // Check if user has seen the welcome message
   useEffect(() => {
@@ -55,36 +65,58 @@ export default function HomePage() {
   }, []);
 
   // Fetch textbooks from API
-  useEffect(() => {
-    const fetchTextbooks = async () => {
-      try {
-        // Get public token
-        const tokenResp = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResp.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResp.json();
-
-        // Use the token to fetch textbooks
-        const response = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/textbooks`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          }
-        );
-        const data = await response.json();
-        setTextbooks(data.textbooks || []);
-      } catch (error) {
-        console.error("Error fetching textbooks:", error);
-      } finally {
-        setLoading(false);
+  const fetchTextbooks = async (offset = 0, append = false) => {
+    try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
       }
-    };
 
+      // Get public token
+      const tokenResp = await fetch(
+        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
+      );
+      if (!tokenResp.ok) throw new Error("Failed to get public token");
+      const { token } = await tokenResp.json();
+
+      // Use the token to fetch textbooks with pagination
+      const response = await fetch(
+        `${
+          import.meta.env.VITE_API_ENDPOINT
+        }/textbooks?limit=20&offset=${offset}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.json();
+
+      if (append) {
+        setTextbooks((prev) => [...prev, ...(data.textbooks || [])]);
+      } else {
+        setTextbooks(data.textbooks || []);
+      }
+
+      setPagination(data.pagination);
+    } catch (error) {
+      console.error("Error fetching textbooks:", error);
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  useEffect(() => {
     fetchTextbooks();
   }, []);
+
+  const handleLoadMore = () => {
+    if (pagination && pagination.hasMore) {
+      fetchTextbooks(pagination.offset + pagination.limit, true);
+    }
+  };
 
   // Convert API textbooks to card format and apply search filtering
   useEffect(() => {
@@ -119,14 +151,12 @@ export default function HomePage() {
       <Dialog open={showWelcome} onOpenChange={setShowWelcome}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">
-              Welcome
-            </DialogTitle>
+            <DialogTitle className="text-2xl font-bold">Welcome</DialogTitle>
             <DialogDescription className="text-base leading-relaxed pt-4 space-y-4">
               {welcomeMsg ? (
-                welcomeMsg.split("\n\n").map((para, idx) => (
-                  <p key={idx}>{para}</p>
-                ))
+                welcomeMsg
+                  .split("\n\n")
+                  .map((para, idx) => <p key={idx}>{para}</p>)
               ) : (
                 // If the welcome message hasn't loaded for some reason, show the
                 // default message (which will mirror the previous hardcoded content)
@@ -181,6 +211,32 @@ export default function HomePage() {
               ))
             )}
           </div>
+
+          {/* Pagination Controls */}
+          {!loading && pagination && (
+            <div className="mt-8 flex flex-col items-center gap-4">
+              <p className="text-sm text-muted-foreground">
+                Showing {filteredBooks.length} of {pagination.total} textbooks
+              </p>
+              {pagination.hasMore && (
+                <Button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  variant="outline"
+                  className="min-w-[200px]"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    "Load More Textbooks"
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </main>
       <Footer />

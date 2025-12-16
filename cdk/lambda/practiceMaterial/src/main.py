@@ -7,7 +7,7 @@ from typing import Any, Dict
 
 from helpers.vectorstore import get_textbook_retriever
 from langchain_aws import BedrockEmbeddings, ChatBedrock
-
+# practice material grading handler
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -541,202 +541,181 @@ def build_grading_prompt(
 def handler(event, context):
     logger.info("PracticeMaterial Lambda (Docker) invoked")
 
-    # Validate path and parse inputs
-    resource = (event.get("httpMethod", "") + " " + event.get("resource", "")).strip()
-    
-    # Handle grading endpoint
-    if resource == "POST /textbooks/{textbook_id}/practice_materials/grade":
-        return handle_grading(event, context)
-    
-    # Handle generation endpoint
-    if resource != "POST /textbooks/{textbook_id}/practice_materials":
-        return {"statusCode": 404, "body": json.dumps({"error": f"Unsupported route: {resource}"})}
+    def stream():
+        try:
+            # Send an early chunk to start the stream and beat API GW TTFB limits
+            yield json.dumps({"status": "started"}) + "\n"
 
-    path_params = event.get("pathParameters") or {}
-    textbook_id = path_params.get("textbook_id")
-    if not textbook_id:
-        return {"statusCode": 400, "body": json.dumps({"error": "Textbook ID is required"})}
+            resource = (event.get("httpMethod", "") + " " + event.get("resource", "")).strip()
 
-    body = parse_body(event.get("body"))
-    topic = str(body.get("topic", "")).strip()
-    if not topic:
-        return {"statusCode": 400, "body": json.dumps({"error": "'topic' is required"})}
-    material_type = str(body.get("material_type", "mcq")).lower().strip()
-    if material_type not in ["mcq", "flashcard", "short_answer"]:
-        return {"statusCode": 400, "body": json.dumps({"error": "material_type must be 'mcq', 'flashcard', or 'short_answer'"})}
+            # Grade endpoint (non-streaming workload but streamed response wrapper)
+            if resource == "POST /textbooks/{textbook_id}/practice_materials/grade":
+                grade_resp = handle_grading(event, context)
+                grade_body = grade_resp.get("body") if isinstance(grade_resp, dict) else None
+                try:
+                    parsed_grade = json.loads(grade_body) if isinstance(grade_body, str) else grade_body
+                except Exception:
+                    parsed_grade = {"raw": grade_body}
+                yield json.dumps({"status": "completed", "data": parsed_grade}) + "\n"
+                return
 
-    difficulty = str(body.get("difficulty", "intermediate")).lower().strip()
-    
-    # MCQ-specific parameters
-    num_questions = clamp(int(body.get("num_questions", 5)), 1, 20)
-    num_options = clamp(int(body.get("num_options", 4)), 2, 6)
-    
-    # Flashcard-specific parameters
-    num_cards = clamp(int(body.get("num_cards", 10)), 1, 20)
-    card_type = str(body.get("card_type", "definition")).lower().strip()
-    
-    # Short answer-specific parameters
-    # For short answers, reuse num_questions but with different limits
-    if material_type == "short_answer":
-        num_questions = clamp(int(body.get("num_questions", 3)), 1, 10)
+            # Unsupported routes
+            if resource != "POST /textbooks/{textbook_id}/practice_materials":
+                yield json.dumps({"status": "error", "message": f"Unsupported route: {resource}"}) + "\n"
+                return
 
-    try:
-        # Initialize constants from SSM parameters
-        initialize_constants()
+            path_params = event.get("pathParameters") or {}
+            textbook_id = path_params.get("textbook_id")
+            if not textbook_id:
+                yield json.dumps({"status": "error", "message": "Textbook ID is required"}) + "\n"
+                return
 
-        # Get DB creds and build retriever
-        db = get_secret_dict(SM_DB_CREDENTIALS)
-        vectorstore_config = {
-            "dbname": db["dbname"],
-            "user": db["username"],
-            "password": db["password"],
-            "host": RDS_PROXY_ENDPOINT,
-            "port": db["port"],
-        }
+            body = parse_body(event.get("body"))
+            topic = str(body.get("topic", "")).strip()
+            if not topic:
+                yield json.dumps({"status": "error", "message": "'topic' is required"}) + "\n"
+                return
 
-        retriever = get_textbook_retriever(
-            llm=None,
-            textbook_id=textbook_id,
-            vectorstore_config_dict=vectorstore_config,
-            embeddings=_embeddings,
-        )
-        if retriever is None:
-            return {
-                "statusCode": 404,
-                "headers": {"Content-Type": "application/json", "Access-Control-Allow-Origin": "*"},
-                "body": json.dumps({"error": f"No embeddings found for textbook {textbook_id}"}),
+            material_type = str(body.get("material_type", "mcq")).lower().strip()
+            if material_type not in ["mcq", "flashcard", "short_answer"]:
+                yield json.dumps({"status": "error", "message": "material_type must be 'mcq', 'flashcard', or 'short_answer'"}) + "\n"
+                return
+
+            difficulty = str(body.get("difficulty", "intermediate")).lower().strip()
+
+            # MCQ-specific parameters
+            num_questions = clamp(int(body.get("num_questions", 5)), 1, 20)
+            num_options = clamp(int(body.get("num_options", 4)), 2, 6)
+
+            # Flashcard-specific parameters
+            num_cards = clamp(int(body.get("num_cards", 10)), 1, 20)
+            card_type = str(body.get("card_type", "definition")).lower().strip()
+
+            # Short answer-specific parameters
+            if material_type == "short_answer":
+                num_questions = clamp(int(body.get("num_questions", 3)), 1, 10)
+
+            # Initialize constants and retriever
+            initialize_constants()
+
+            db = get_secret_dict(SM_DB_CREDENTIALS)
+            vectorstore_config = {
+                "dbname": db["dbname"],
+                "user": db["username"],
+                "password": db["password"],
+                "host": RDS_PROXY_ENDPOINT,
+                "port": db["port"],
             }
 
-        # Pull a few relevant chunks as context
-        docs = retriever.invoke(topic)
-        snippets = [d.page_content.strip()[:500] for d in docs][:6] #pulling chunks
-        
-        # Extract sources from retrieved documents 
-        sources_used = extract_sources_from_docs(docs)
-        logger.info(f"Extracted {len(sources_used)} sources: {sources_used}")
+            retriever = get_textbook_retriever(
+                llm=None,
+                textbook_id=textbook_id,
+                vectorstore_config_dict=vectorstore_config,
+                embeddings=_embeddings,
+            )
+            if retriever is None:
+                yield json.dumps({"status": "error", "message": f"No embeddings found for textbook {textbook_id}"}) + "\n"
+                return
 
-        # Build prompt based on material type
-        if material_type == "mcq":
-            prompt = build_prompt(topic, difficulty, num_questions, num_options, snippets)
-        elif material_type == "flashcard":
-            prompt = build_flashcard_prompt(topic, difficulty, num_cards, card_type, snippets)
-        else:  # short_answer
-            prompt = build_short_answer_prompt(topic, difficulty, num_questions, snippets)
+            docs = retriever.invoke(topic)
+            snippets = [d.page_content.strip()[:500] for d in docs][:6]
+            sources_used = extract_sources_from_docs(docs)
+            logger.info(f"Extracted {len(sources_used)} sources: {sources_used}")
 
-        # Use ChatBedrock LLM (matching textGeneration pattern)
-        logger.info(f"Invoking LLM for {material_type} generation")
-        response = _llm.invoke(prompt)
-        output_text = response.content
-        logger.info(f"Received response from LLM, length: {len(output_text)}")
-        
-        # Always log the full raw output for debugging
-        logger.info(f"Raw LLM output (full): {output_text}")
-
-        try:
             if material_type == "mcq":
-                result = validate_shape(extract_json(output_text), num_questions, num_options)
+                prompt = build_prompt(topic, difficulty, num_questions, num_options, snippets)
             elif material_type == "flashcard":
-                result = validate_flashcard_shape(extract_json(output_text), num_cards)
-            else:  # short_answer
-                result = validate_short_answer_shape(extract_json(output_text), num_questions)
-        except Exception as e1:
-            logger.warning(f"First parse/validation failed: {e1}")
-            logger.warning(f"Raw LLM output (first 2000 chars): {output_text[:2000]}")
-            retry_prompt = prompt + "\n\nIMPORTANT: Your previous response was invalid. You MUST return valid JSON only, exactly matching the schema and lengths. No extra commentary."
-            logger.info("Retrying with enhanced prompt")
-            response2 = _llm.invoke(retry_prompt)
-            output_text2 = response2.content
-            logger.info(f"Retry response length: {len(output_text2)}")
-            logger.info(f"Raw retry LLM output (full): {output_text2}")
+                prompt = build_flashcard_prompt(topic, difficulty, num_cards, card_type, snippets)
+            else:
+                prompt = build_short_answer_prompt(topic, difficulty, num_questions, snippets)
+
+            logger.info(f"Invoking LLM for {material_type} generation")
+            response = _llm.invoke(prompt)
+            output_text = response.content
+            logger.info(f"Received response from LLM, length: {len(output_text)}")
+            logger.info(f"Raw LLM output (full): {output_text}")
+
             try:
                 if material_type == "mcq":
-                    result = validate_shape(extract_json(output_text2), num_questions, num_options)
+                    result = validate_shape(extract_json(output_text), num_questions, num_options)
                 elif material_type == "flashcard":
-                    result = validate_flashcard_shape(extract_json(output_text2), num_cards)
-                else:  # short_answer
-                    result = validate_short_answer_shape(extract_json(output_text2), num_questions)
-            except Exception as e2:
-                logger.error(f"Retry also failed: {e2}")
-                logger.error(f"Raw retry output (first 2000 chars): {output_text2[:2000]}")
-                # Return the raw LLM responses to client for debugging
-                return {
-                    "statusCode": 500,
-                    "headers": {
-                        "Content-Type": "application/json",
-                        "Access-Control-Allow-Headers": "*",
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Allow-Methods": "*",
-                    },
-                    "body": json.dumps({
-                        "error": f"Failed to parse LLM response after retry: {str(e2)}",
+                    result = validate_flashcard_shape(extract_json(output_text), num_cards)
+                else:
+                    result = validate_short_answer_shape(extract_json(output_text), num_questions)
+            except Exception as e1:
+                logger.warning(f"First parse/validation failed: {e1}")
+                logger.warning(f"Raw LLM output (first 2000 chars): {output_text[:2000]}")
+                retry_prompt = prompt + "\n\nIMPORTANT: Your previous response was invalid. You MUST return valid JSON only, exactly matching the schema and lengths. No extra commentary."
+                logger.info("Retrying with enhanced prompt")
+                response2 = _llm.invoke(retry_prompt)
+                output_text2 = response2.content
+                logger.info(f"Retry response length: {len(output_text2)}")
+                logger.info(f"Raw retry LLM output (full): {output_text2}")
+                try:
+                    if material_type == "mcq":
+                        result = validate_shape(extract_json(output_text2), num_questions, num_options)
+                    elif material_type == "flashcard":
+                        result = validate_flashcard_shape(extract_json(output_text2), num_cards)
+                    else:
+                        result = validate_short_answer_shape(extract_json(output_text2), num_questions)
+                except Exception as e2:
+                    logger.error(f"Retry also failed: {e2}")
+                    logger.error(f"Raw retry output (first 2000 chars): {output_text2[:2000]}")
+                    yield json.dumps({
+                        "status": "error",
+                        "message": f"Failed to parse LLM response after retry: {str(e2)}",
                         "firstAttemptError": str(e1),
                         "rawFirstResponse": output_text,
                         "rawRetryResponse": output_text2,
-                        "debug": "Check the raw responses above to see what the LLM generated"
-                    })
-                }
+                    }) + "\n"
+                    return
 
-        # Add sources to response 
-        response_data = {
-            **result,
-            "sources_used": sources_used
-        }
-        
-        # Track analytics (async, non-blocking)
-        try:
-            # Prepare metadata based on material type
-            analytics_metadata = {}
-            if material_type == "mcq":
-                analytics_metadata = {
-                    "numOptions": num_options,
-                    "numQuestions": num_questions
-                }
-            elif material_type == "flashcard":
-                analytics_metadata = {
-                    "cardType": card_type,
-                    "numCards": num_cards
-                }
-            else:  # short_answer
-                analytics_metadata = {
-                    "numQuestions": num_questions
-                }
-            
-            # Get user_session_id from query parameters if available
-            query_params = event.get("queryStringParameters") or {}
-            user_session_id = query_params.get("user_session_id")
-            
-            # Determine num_items based on material type
-            if material_type == "flashcard":
-                num_items_generated = num_cards
-            else:
-                num_items_generated = num_questions
-            
-            # Track the generation
-            track_practice_material_analytics(
-                textbook_id=textbook_id,
-                material_type=material_type,
-                topic=topic,
-                num_items=num_items_generated,
-                difficulty=difficulty,
-                metadata=analytics_metadata,
-                user_session_id=user_session_id
-            )
-        except Exception as analytics_error:
-            logger.warning(f"Analytics tracking failed but continuing: {analytics_error}")
-        
-        return {
-            "statusCode": 200,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "*",
-            },
-            "body": json.dumps(response_data)
-        }
-    except Exception as e:
-        logger.exception("Error generating practice materials")
-        return {"statusCode": 500, "body": json.dumps({"error": str(e)})}
+            response_data = {**result, "sources_used": sources_used}
+
+            try:
+                analytics_metadata = {}
+                if material_type == "mcq":
+                    analytics_metadata = {"numOptions": num_options, "numQuestions": num_questions}
+                elif material_type == "flashcard":
+                    analytics_metadata = {"cardType": card_type, "numCards": num_cards}
+                else:
+                    analytics_metadata = {"numQuestions": num_questions}
+
+                query_params = event.get("queryStringParameters") or {}
+                user_session_id = query_params.get("user_session_id")
+
+                num_items_generated = num_cards if material_type == "flashcard" else num_questions
+
+                track_practice_material_analytics(
+                    textbook_id=textbook_id,
+                    material_type=material_type,
+                    topic=topic,
+                    num_items=num_items_generated,
+                    difficulty=difficulty,
+                    metadata=analytics_metadata,
+                    user_session_id=user_session_id,
+                )
+            except Exception as analytics_error:
+                logger.warning(f"Analytics tracking failed but continuing: {analytics_error}")
+
+            yield json.dumps({"status": "completed", "data": response_data}) + "\n"
+        except Exception as e:
+            logger.exception("Error generating practice materials")
+            yield json.dumps({"status": "error", "message": str(e)}) + "\n"
+
+    # Fallback: accumulate streamed chunks and return as NDJSON body
+    body = "".join(chunk for chunk in stream())
+
+    return {
+        "statusCode": 200,
+        "headers": {
+            "Content-Type": "application/x-ndjson",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+        },
+        "body": body,
+    }
 
 
 def handle_grading(event, context):

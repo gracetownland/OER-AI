@@ -24,11 +24,13 @@ import * as ecr from "aws-cdk-lib/aws-ecr";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 
 interface ApiGatewayStackProps extends cdk.StackProps {
   ecrRepositories: { [key: string]: ecr.Repository };
   codeBuildProjects?: { [key: string]: codebuild.IProject };
   csvBucket: s3.Bucket;
+  textbookIngestionQueue: sqs.Queue;
 }
 
 export class ApiGatewayStack extends cdk.Stack {
@@ -1585,6 +1587,7 @@ export class ApiGatewayStack extends cdk.Stack {
           SM_DB_CREDENTIALS: db.secretPathUser.secretName,
           RDS_PROXY_ENDPOINT: db.rdsProxyEndpoint,
           DAILY_TOKEN_LIMIT: dailyTokenLimitParameter.parameterName,
+          TEXTBOOK_QUEUE_URL: props.textbookIngestionQueue.queueUrl,
         },
         functionName: `${id}-adminFunction`,
         memorySize: 512,
@@ -1609,6 +1612,15 @@ export class ApiGatewayStack extends cdk.Stack {
       new iam.PolicyStatement({
         actions: ["ssm:GetParameter", "ssm:PutParameter"],
         resources: [dailyTokenLimitParameter.parameterArn],
+      })
+    );
+
+    // Grant SQS send message permissions for re-ingestion
+    lambdaAdminFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["sqs:SendMessage"],
+        resources: [props.textbookIngestionQueue.queueArn],
       })
     );
 
@@ -1880,7 +1892,10 @@ export class ApiGatewayStack extends cdk.Stack {
     practiceMaterialDockerFunc.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ["bedrock:InvokeModel"],
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ],
         resources: [
           // Llama 3 model (for practice material generation)
           `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,
