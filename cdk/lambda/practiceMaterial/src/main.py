@@ -4,7 +4,6 @@ import logging
 import boto3
 import psycopg2
 from typing import Any, Dict
-from aws_lambda_powertools.utilities.streaming import StreamingResponse
 
 from helpers.vectorstore import get_textbook_retriever
 from langchain_aws import BedrockEmbeddings, ChatBedrock
@@ -704,16 +703,19 @@ def handler(event, context):
             logger.exception("Error generating practice materials")
             yield json.dumps({"status": "error", "message": str(e)}) + "\n"
 
-    return StreamingResponse(
-        status_code=200,
-        headers={
+    # Fallback: accumulate streamed chunks and return as NDJSON body
+    body = "".join(chunk for chunk in stream())
+
+    return {
+        "statusCode": 200,
+        "headers": {
             "Content-Type": "application/x-ndjson",
             "Access-Control-Allow-Headers": "*",
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "*",
         },
-        iterator=stream(),
-    )
+        "body": body,
+    }
 
 
 def handle_grading(event, context):
