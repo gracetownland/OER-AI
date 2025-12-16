@@ -5,7 +5,6 @@ langchain-postgres==0.0.16
 langchain>=1.0.0,<2.0.0
 langchain-classic
 boto3
-aws-lambda-powertools
 psycopg[binary, pool]
 psycopg2-binary
 pydantic

@@ -5884,8 +5884,6 @@ paths:
         passthroughBehavior: "when_no_match"
         httpMethod: POST
         type: aws_proxy
-        responseParameters:
-          transferMode: "STREAM"
 
   /textbooks/{textbook_id}/practice_materials/grade:
     <<: *commonOptions

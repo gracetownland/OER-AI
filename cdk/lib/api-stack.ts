@@ -1892,10 +1892,7 @@ export class ApiGatewayStack extends cdk.Stack {
     practiceMaterialDockerFunc.addToRolePolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream",
-        ],
+        actions: ["bedrock:InvokeModel"],
         resources: [
           // Llama 3 model (for practice material generation)
           `arn:aws:bedrock:${this.region}::foundation-model/meta.llama3-70b-instruct-v1:0`,

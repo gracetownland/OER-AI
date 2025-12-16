@@ -22,8 +22,6 @@ boto3==1.40.26
     # via
     #   -r requirements.in
     #   langchain-aws
-aws-lambda-powertools==3.3.0
-    # via -r requirements.in
 botocore==1.40.26
     # via
     #   -r requirements.in
