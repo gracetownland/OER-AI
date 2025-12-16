@@ -79,6 +79,12 @@ export default function TextbookManagement() {
     textbookId: string | number | null;
     isProcessing: boolean;
   }>({ open: false, textbookId: null, isProcessing: false });
+  const [deleteDialog, setDeleteDialog] = useState<{
+    open: boolean;
+    textbookId: string | number | null;
+    textbookTitle: string;
+    isProcessing: boolean;
+  }>({ open: false, textbookId: null, textbookTitle: "", isProcessing: false });
 
   const handleFileSelect = (selectedFile: File) => {
     setUploadStatus({ type: null, message: "" });
@@ -314,25 +320,35 @@ export default function TextbookManagement() {
     }
   };
 
-  const handleDelete = async (id: string | number) => {
-    if (
-      !confirm(
-        "Are you sure you want to delete this textbook? This action cannot be undone."
-      )
-    ) {
-      return;
-    }
+  const handleDelete = (id: string | number) => {
+    const textbook = textbooks.find((b) => b.id === id);
+    setDeleteDialog({
+      open: true,
+      textbookId: id,
+      textbookTitle: textbook?.title || "this textbook",
+      isProcessing: false,
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteDialog.textbookId) return;
+
+    setDeleteDialog((prev) => ({ ...prev, isProcessing: true }));
 
     // Optimistically remove from UI
     const originalTextbooks = [...textbooks];
-    setTextbooks(textbooks.filter((book) => book.id !== id));
+    setTextbooks(
+      textbooks.filter((book) => book.id !== deleteDialog.textbookId)
+    );
 
     try {
       const session = await AuthService.getAuthSession(true);
       const token = session.tokens.idToken;
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${id}`,
+        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${
+          deleteDialog.textbookId
+        }`,
         {
           method: "DELETE",
           headers: {
@@ -344,11 +360,25 @@ export default function TextbookManagement() {
       if (!response.ok) {
         throw new Error("Failed to delete textbook");
       }
+
+      // Close dialog on success
+      setDeleteDialog({
+        open: false,
+        textbookId: null,
+        textbookTitle: "",
+        isProcessing: false,
+      });
     } catch (err) {
       console.error("Error deleting textbook:", err);
       // Revert on error
       setTextbooks(originalTextbooks);
       setError("Failed to delete textbook");
+      setDeleteDialog({
+        open: false,
+        textbookId: null,
+        textbookTitle: "",
+        isProcessing: false,
+      });
     }
   };
 
@@ -988,7 +1018,7 @@ export default function TextbookManagement() {
                 <li>All sections and chapters will be deleted</li>
                 <li>All associated media items will be removed</li>
                 <li>All vector embeddings will be cleared</li>
-                <li>The textbook will be re-downloaded and re-processed</li>
+                <li>The textbook will be re-processed and re-ingested</li>
               </ul>
               <p className="text-sm font-medium text-amber-700 bg-amber-50 p-3 rounded border border-amber-200">
                 ⚠️ This process cannot be undone. The textbook will be
@@ -1028,6 +1058,84 @@ export default function TextbookManagement() {
                 <>
                   <RefreshCw className="mr-2 h-4 w-4" />
                   Yes, Re-Ingest
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialog.open}
+        onOpenChange={(open) =>
+          !deleteDialog.isProcessing &&
+          setDeleteDialog({
+            open,
+            textbookId: null,
+            textbookTitle: "",
+            isProcessing: false,
+          })
+        }
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Delete Textbook
+            </DialogTitle>
+            <DialogDescription className="space-y-3 pt-2">
+              <p className="font-semibold text-gray-900">
+                Are you sure you want to permanently delete "
+                {deleteDialog.textbookTitle}"?
+              </p>
+              <p className="text-sm text-gray-700">
+                This action will permanently delete:
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                <li>The textbook record and all metadata</li>
+                <li>All sections and chapters</li>
+                <li>All associated media items (images, videos, etc.)</li>
+                <li>All vector embeddings</li>
+                <li>All user interactions and chat history</li>
+                <li>All ingestion job records</li>
+              </ul>
+              <p className="text-sm font-medium text-red-700 bg-red-50 p-3 rounded border border-red-200">
+                ⚠️ This action cannot be undone. All data associated with this
+                textbook will be permanently lost.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() =>
+                setDeleteDialog({
+                  open: false,
+                  textbookId: null,
+                  textbookTitle: "",
+                  isProcessing: false,
+                })
+              }
+              disabled={deleteDialog.isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleteDialog.isProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteDialog.isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Yes, Delete Permanently
                 </>
               )}
             </Button>
