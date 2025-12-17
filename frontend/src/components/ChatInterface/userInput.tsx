@@ -219,7 +219,7 @@ export function AiChatInput({
         onCompositionEnd={handleCompositionEnd}
         spellCheck={false}
         className={cn(
-          "bg-input border border-[var(--border)] rounded-md h-[120px] pr-12 resize-none text-sm overflow-auto",
+          "bg-input border border-[var(--border)] rounded-md min-h-[60px] max-h-[300px] pr-12 resize-none text-sm overflow-auto",
           "px-3 py-2 whitespace-pre-wrap break-words outline-none",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
           disabled && "cursor-not-allowed opacity-50"
