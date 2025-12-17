@@ -50,7 +50,7 @@ type PromptTemplate = {
   id: string;
   name: string;
   description: string;
-  type: "RAG" | "quiz_generation" | "mcq_generation" | "audio_generation";
+  type: "RAG" | "guided";
   visibility: "private" | "org" | "public";
   metadata: any;
   created_at: string;
@@ -460,9 +460,7 @@ export default function FAQsAndPrompts() {
   const getTypeColor = (type: string) => {
     const colors: Record<string, string> = {
       RAG: "bg-blue-100 text-blue-700 border-blue-200",
-      quiz_generation: "bg-purple-100 text-purple-700 border-purple-200",
-      mcq_generation: "bg-green-100 text-green-700 border-green-200",
-      audio_generation: "bg-orange-100 text-orange-700 border-orange-200",
+      guided: "bg-purple-100 text-purple-700 border-purple-200",
     };
     return colors[type] || "bg-gray-100 text-gray-700 border-gray-200";
   };
@@ -935,13 +933,7 @@ export default function FAQsAndPrompts() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="RAG">RAG</SelectItem>
-                  <SelectItem value="quiz_generation">
-                    Quiz Generation
-                  </SelectItem>
-                  <SelectItem value="mcq_generation">MCQ Generation</SelectItem>
-                  <SelectItem value="audio_generation">
-                    Audio Generation
-                  </SelectItem>
+                  <SelectItem value="guided">Guided Learning</SelectItem>
                 </SelectContent>
               </Select>
             </div>
