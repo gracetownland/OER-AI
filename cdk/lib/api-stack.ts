@@ -975,6 +975,7 @@ export class ApiGatewayStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "ttl", // Enable TTL on the 'ttl' attribute
+      encryption: dynamodb.TableEncryption.AWS_MANAGED, // Encrypt at rest with AWS-managed keys
       removalPolicy: cdk.RemovalPolicy.DESTROY, // Use RETAIN for production
     });
 
