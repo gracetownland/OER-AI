@@ -110,7 +110,7 @@ Please refer to the [Web App User Guide](Docs/USER_GUIDE.md) for instructions on
 
 1. `/cdk`: Contains the deployment code for the app's AWS infrastructure
    - `/bin`: Contains the instantiation of CDK stacks
-    - `/glue`Contains AWS Glue-related resources for ETL (Extract, Transform, Load) operations:
+   - `/glue`Contains AWS Glue-related resources for ETL (Extract, Transform, Load) operations:
    - `/lambda`: Contains the Lambda functions for data ingestion, text generation, practice material generation, and other core functionalities
      - `/adminAuthorizerFunction`: Admin authentication and authorization
      - `/authorization`: User authorization logic
@@ -277,7 +277,7 @@ Licenses of libraries and tools used by the system are listed below:
 
 [Amazon Titan License](https://aws.amazon.com/bedrock/titan/)
 
-- For Amazon Titan Embeddings V2
+- For Cohere Embed V4
 
 [MIT License](https://opensource.org/licenses/MIT)
 
