@@ -76,7 +76,7 @@ langchain-classic==1.0.0
     #   langchain-community
 langchain-community==0.4.1
     # via -r requirements.in
-langchain-core==1.0.7
+langchain-core==1.2.5
     # via
     #   -r requirements.in
     #   langchain
@@ -220,6 +220,8 @@ urllib3==2.6.0
     #   -r requirements.in
     #   botocore
     #   requests
+uuid-utils==0.12.0
+    # via langchain-core
 xxhash==3.6.0
     # via langgraph
 yarl==1.20.1
