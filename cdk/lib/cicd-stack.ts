@@ -79,9 +79,9 @@ export class CICDStack extends cdk.Stack {
           repo: props.githubRepo,
           branch: props.githubBranch ?? "main",
           oauthToken: cdk.SecretValue.secretsManager(
-            "github-personal-access-token",
+            "github-access-token-temp",
             {
-              jsonField: "my-github-token",
+              jsonField: "my-github-token-temp",
             }
           ),
           output: sourceOutput,
@@ -161,7 +161,7 @@ export class CICDStack extends cdk.Stack {
             GITHUB_REPO: { value: props.githubRepo },
             GITHUB_TOKEN: {
               type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
-              value: "github-personal-access-token:my-github-token",
+              value: "github-access-token-temp:my-github-token-temp",
             },
             PATH_FILTER: { value: lambda.sourceDir },
           },
