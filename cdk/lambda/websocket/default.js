@@ -49,6 +49,52 @@ exports.handler = async (event) => {
       return { statusCode: 200 };
     }
 
+    if (action === "generate_practice_material") {
+      // Extract practice material specific fields
+      const { material_type, topic, difficulty, num_questions, num_options, num_cards, card_type } = body;
+
+      const practicePayload = {
+        pathParameters: {
+          textbook_id: textbook_id,
+        },
+        body: JSON.stringify({
+          material_type: material_type || "mcq",
+          topic: topic,
+          difficulty: difficulty || "intermediate",
+          num_questions: num_questions || 5,
+          num_options: num_options || 4,
+          num_cards: num_cards || 10,
+          card_type: card_type || "definition",
+        }),
+        httpMethod: "POST",
+        resource: "/textbooks/{textbook_id}/practice_materials",
+        // WebSocket context for sending progress updates
+        requestContext: {
+          connectionId: event.requestContext.connectionId,
+          domainName: event.requestContext.domainName,
+          stage: event.requestContext.stage,
+        },
+        isWebSocket: true, // Flag to indicate WebSocket invocation
+      };
+
+      console.log(
+        "Invoking practice material function with payload:",
+        practicePayload
+      );
+
+      const result = await lambda.send(
+        new InvokeCommand({
+          FunctionName: process.env.PRACTICE_MATERIAL_FUNCTION_NAME,
+          InvocationType: "Event", // Asynchronous invocation
+          Payload: JSON.stringify(practicePayload),
+        })
+      );
+
+      console.log("Practice material function invoked successfully:", result);
+
+      return { statusCode: 200 };
+    }
+
     return {
       statusCode: 400,
       body: JSON.stringify({ error: "Unknown action" }),

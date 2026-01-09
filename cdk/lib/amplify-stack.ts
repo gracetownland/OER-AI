@@ -11,6 +11,7 @@ import { ApiGatewayStack } from "./api-stack";
 
 interface AmplifyStackProps extends cdk.StackProps {
   githubRepo: string;
+  githubBranch?: string;
 }
 
 export class AmplifyStack extends cdk.Stack {
@@ -73,9 +74,8 @@ export class AmplifyStack extends cdk.Stack {
         VITE_COGNITO_USER_POOL_CLIENT_ID: apiStack.getUserPoolClientId(),
         VITE_API_ENDPOINT: apiStack.getEndpointUrl(),
         VITE_IDENTITY_POOL_ID: apiStack.getIdentityPoolId(),
-        VITE_WEBSOCKET_URL: `${apiStack.getWebSocketUrl()}/${
-          apiStack.getStageName() ?? ""
-        }`,
+        VITE_WEBSOCKET_URL: `${apiStack.getWebSocketUrl()}/${apiStack.getStageName() ?? ""
+          }`,
       },
       buildSpec: BuildSpec.fromObjectToYaml(amplifyYaml),
     });
@@ -86,7 +86,14 @@ export class AmplifyStack extends cdk.Stack {
       status: RedirectStatus.NOT_FOUND_REWRITE,
     });
 
+    // Add main branch
     amplifyApp.addBranch("main");
+
+    // Add feature branch if specified and not main
+    const branch = props.githubBranch ?? "main";
+    if (branch !== "main") {
+      amplifyApp.addBranch(branch);
+    }
 
   }
 }

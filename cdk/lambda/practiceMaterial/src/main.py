@@ -66,6 +66,60 @@ def emit_cold_start_metrics(function_name: str, execution_ms: int, cold_start_ms
     print(json.dumps(payload))
 
 
+def send_websocket_progress(
+    connection_id: str | None,
+    domain_name: str | None,
+    stage: str | None,
+    status: str,
+    progress: int,
+    data: Dict[str, Any] | None = None,
+    error: str | None = None
+) -> None:
+    """
+    Send progress updates to the client via WebSocket.
+    
+    Args:
+        connection_id: WebSocket connection ID
+        domain_name: API Gateway domain name
+        stage: API Gateway stage
+        status: Status message (e.g., 'initializing', 'retrieving', 'generating', 'complete', 'error')
+        progress: Progress percentage (0-100)
+        data: Optional data payload (for 'complete' status)
+        error: Optional error message (for 'error' status)
+    """
+    if not connection_id or not domain_name or not stage:
+        logger.debug("No WebSocket context, skipping progress update")
+        return
+    
+    try:
+        endpoint_url = f"https://{domain_name}/{stage}"
+        apigw_management = boto3.client(
+            "apigatewaymanagementapi",
+            endpoint_url=endpoint_url,
+            region_name=REGION
+        )
+        
+        message = {
+            "type": "practice_material_progress",
+            "status": status,
+            "progress": progress,
+        }
+        
+        if data is not None:
+            message["data"] = data
+        if error is not None:
+            message["error"] = error
+        
+        apigw_management.post_to_connection(
+            ConnectionId=connection_id,
+            Data=json.dumps(message).encode("utf-8")
+        )
+        logger.info(f"Sent WebSocket progress: status={status}, progress={progress}%")
+    except Exception as e:
+        logger.warning(f"Failed to send WebSocket progress: {e}")
+        # Don't fail the request if WebSocket update fails
+
+
 def get_secret_dict(name: str) -> Dict[str, Any]:
     global _db_secret
     if _db_secret is None:
@@ -624,13 +678,26 @@ def handler(event, context):
     if material_type == "short_answer":
         num_questions = clamp(int(body.get("num_questions", 3)), 1, 10)
 
+    # Extract WebSocket context for streaming progress updates
+    request_context = event.get("requestContext") or {}
+    is_websocket = event.get("isWebSocket", False)
+    connection_id = request_context.get("connectionId") if is_websocket else None
+    domain_name = request_context.get("domainName") if is_websocket else None
+    stage = request_context.get("stage") if is_websocket else None
+    
+    # Helper to send progress updates
+    def send_progress(status: str, progress: int, data=None, error=None):
+        send_websocket_progress(connection_id, domain_name, stage, status, progress, data, error)
+
     try:
-        # Initialize constants from SSM parameters
+        # Stage 1: Initialize
+        send_progress("initializing", 5)
         logger.info("Initializing constants from SSM parameters...")
         initialize_constants()
         logger.info("Constants initialized successfully")
 
-        # Get DB credentials from Secrets Manager
+        # Stage 2: Get DB credentials
+        send_progress("initializing", 10)
         logger.info("Getting DB credentials...")
         db = get_secret_dict(SM_DB_CREDENTIALS)
         logger.info("DB credentials retrieved")
@@ -643,7 +710,8 @@ def handler(event, context):
             "port": db["port"],
         }
 
-        # Build retriever
+        # Stage 3: Build retriever
+        send_progress("retrieving", 15)
         logger.info(f"Building retriever for textbook {textbook_id}...")
         retriever = get_textbook_retriever(
             llm=None,
@@ -652,6 +720,7 @@ def handler(event, context):
             embeddings=_embeddings,
         )
         logger.info("Retriever built successfully")
+        send_progress("retrieving", 20)
         
         if retriever is None:
             return finalize({
@@ -660,10 +729,12 @@ def handler(event, context):
                 "body": json.dumps({"error": f"No embeddings found for textbook {textbook_id}"}),
             })
 
-        # Invoke retriever to get relevant context
+        # Stage 4: Invoke retriever
+        send_progress("retrieving", 25)
         logger.info(f"Invoking retriever for topic: {topic}")
         docs = retriever.invoke(topic)
         logger.info(f"Retrieved {len(docs)} documents")
+        send_progress("retrieving", 30)
         
         snippets = [d.page_content.strip()[:500] for d in docs][:6]
         
@@ -671,7 +742,8 @@ def handler(event, context):
         sources_used = extract_sources_from_docs(docs)
         logger.info(f"Extracted {len(sources_used)} sources: {sources_used}")
 
-        # Build prompt based on material type
+        # Stage 5: Build prompt
+        send_progress("generating", 35)
         logger.info(f"Building prompt for {material_type}...")
         if material_type == "mcq":
             prompt = build_prompt(topic, difficulty, num_questions, num_options, snippets)
@@ -681,11 +753,13 @@ def handler(event, context):
             prompt = build_short_answer_prompt(topic, difficulty, num_questions, snippets)
         logger.info(f"Prompt built, length: {len(prompt)} chars")
 
-        # Invoke LLM
+        # Stage 6: Invoke LLM (the slowest part - ~15 seconds)
+        send_progress("generating", 40)
         logger.info(f"Invoking LLM for {material_type} generation...")
         response = _llm.invoke(prompt)
         output_text = response.content
         logger.info(f"LLM response received, length: {len(output_text)} chars")
+        send_progress("validating", 85)
         
         # Log raw output for debugging
         logger.info(f"Raw LLM output: {output_text}")
@@ -788,6 +862,14 @@ def handler(event, context):
         except Exception as analytics_error:
             logger.warning(f"Analytics tracking failed but continuing: {analytics_error}")
         
+        # Send completion via WebSocket if applicable
+        send_progress("complete", 100, data=response_data)
+        
+        # For WebSocket invocations, return minimal response (data sent via WebSocket)
+        if is_websocket:
+            return {"statusCode": 200}
+        
+        # For REST API invocations, return full response
         return finalize({
             "statusCode": 200,
             "headers": {
@@ -800,6 +882,8 @@ def handler(event, context):
         })
     except Exception as e:
         logger.exception("Error generating practice materials")
+        # Send error via WebSocket if applicable
+        send_progress("error", 0, error=str(e))
         return finalize({"statusCode": 500, "body": json.dumps({"error": str(e)})})
 
 

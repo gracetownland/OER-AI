@@ -19,6 +19,7 @@ const StackPrefix = app.node.tryGetContext("StackPrefix");
 const environment = app.node.tryGetContext("environment");
 const version = app.node.tryGetContext("versionNumber");
 const githubRepo = app.node.tryGetContext("githubRepo");
+const githubBranch = app.node.tryGetContext("githubBranch") || "main";
 
 const vpcStack = new VpcStack(app, `${StackPrefix}-VpcStack`, {
   env,
@@ -49,6 +50,7 @@ const dataPipelineStack = new DataPipelineStack(
 const cicdStack = new CICDStack(app, `${StackPrefix}-CICD`, {
   env,
   githubRepo: githubRepo,
+  githubBranch: githubBranch,
   environmentName: environment,
   lambdaFunctions: [
     {
@@ -88,6 +90,7 @@ apiStack.addDependency(cicdStack);
 const amplifyStack = new AmplifyStack(app, `${StackPrefix}-Amplify`, apiStack, {
   env,
   githubRepo: githubRepo,
+  githubBranch: githubBranch,
 });
 amplifyStack.addDependency(apiStack);
 

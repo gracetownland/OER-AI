@@ -1712,6 +1712,7 @@ export class ApiGatewayStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       environment: {
         TEXT_GEN_FUNCTION_NAME: textGenLambdaDockerFunc.functionName,
+        // PRACTICE_MATERIAL_FUNCTION_NAME added after function definition
       },
       functionName: `${id}-DefaultFunction`,
     });
@@ -1728,10 +1729,12 @@ export class ApiGatewayStack extends cdk.Stack {
     connectFunction.addToRolePolicy(wsPolicy);
     disconnectFunction.addToRolePolicy(wsPolicy);
     defaultFunction.addToRolePolicy(wsPolicy);
+    // practiceMaterialDockerFunc wsPolicy added after function definition
 
     jwtSecret.grantRead(connectFunction);
     // Grant the default function permission to invoke the text generation function
     textGenLambdaDockerFunc.grantInvoke(defaultFunction);
+    // practiceMaterialDockerFunc.grantInvoke added after function definition
 
     // Routes
     new apigatewayv2.WebSocketRoute(this, `${id}-ConnectRoute`, {
@@ -1890,6 +1893,15 @@ export class ApiGatewayStack extends cdk.Stack {
       }
     );
     */
+
+    // WebSocket streaming support - add environment variable and permissions
+    // (must be after practiceMaterialDockerFunc is defined)
+    defaultFunction.addEnvironment(
+      "PRACTICE_MATERIAL_FUNCTION_NAME",
+      practiceMaterialDockerFunc.functionName
+    );
+    practiceMaterialDockerFunc.addToRolePolicy(wsPolicy);
+    practiceMaterialDockerFunc.grantInvoke(defaultFunction);
 
     // IAM: Secrets, SSM, Bedrock
 
