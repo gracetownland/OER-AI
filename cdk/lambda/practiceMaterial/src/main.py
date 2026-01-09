@@ -625,11 +625,23 @@ def handler(event, context):
         num_questions = clamp(int(body.get("num_questions", 3)), 1, 10)
 
     try:
-        # Initialize constants from SSM parameters
+        # ========================================================================
+        # TIMING INSTRUMENTATION - Track each stage for bottleneck analysis
+        # ========================================================================
+        timings = {}
+        
+        # Stage 1: Initialize constants from SSM parameters
+        stage_start = time.time()
         initialize_constants()
+        timings["initialize_constants"] = int((time.time() - stage_start) * 1000)
+        logger.info(f"[TIMING] initialize_constants: {timings['initialize_constants']}ms")
 
-        # Get DB creds and build retriever
+        # Stage 2: Get DB credentials from Secrets Manager
+        stage_start = time.time()
         db = get_secret_dict(SM_DB_CREDENTIALS)
+        timings["get_secret"] = int((time.time() - stage_start) * 1000)
+        logger.info(f"[TIMING] get_secret: {timings['get_secret']}ms")
+        
         vectorstore_config = {
             "dbname": db["dbname"],
             "user": db["username"],
@@ -638,12 +650,17 @@ def handler(event, context):
             "port": db["port"],
         }
 
+        # Stage 3: Build retriever (DB connection + vector store setup)
+        stage_start = time.time()
         retriever = get_textbook_retriever(
             llm=None,
             textbook_id=textbook_id,
             vectorstore_config_dict=vectorstore_config,
             embeddings=_embeddings,
         )
+        timings["get_retriever"] = int((time.time() - stage_start) * 1000)
+        logger.info(f"[TIMING] get_retriever: {timings['get_retriever']}ms")
+        
         if retriever is None:
             return finalize({
                 "statusCode": 404,
@@ -651,31 +668,46 @@ def handler(event, context):
                 "body": json.dumps({"error": f"No embeddings found for textbook {textbook_id}"}),
             })
 
-        # Pull a few relevant chunks as context
+        # Stage 4: Invoke retriever (embedding + DB query)
+        stage_start = time.time()
         docs = retriever.invoke(topic)
-        snippets = [d.page_content.strip()[:500] for d in docs][:6] #pulling chunks
+        timings["retriever_invoke"] = int((time.time() - stage_start) * 1000)
+        logger.info(f"[TIMING] retriever_invoke: {timings['retriever_invoke']}ms (retrieved {len(docs)} docs)")
+        
+        snippets = [d.page_content.strip()[:500] for d in docs][:6]
         
         # Extract sources from retrieved documents 
         sources_used = extract_sources_from_docs(docs)
         logger.info(f"Extracted {len(sources_used)} sources: {sources_used}")
 
-        # Build prompt based on material type
+        # Stage 5: Build prompt (fast, but logging for completeness)
+        stage_start = time.time()
         if material_type == "mcq":
             prompt = build_prompt(topic, difficulty, num_questions, num_options, snippets)
         elif material_type == "flashcard":
             prompt = build_flashcard_prompt(topic, difficulty, num_cards, card_type, snippets)
         else:  # short_answer
             prompt = build_short_answer_prompt(topic, difficulty, num_questions, snippets)
+        timings["build_prompt"] = int((time.time() - stage_start) * 1000)
+        logger.info(f"[TIMING] build_prompt: {timings['build_prompt']}ms (prompt length: {len(prompt)})")
 
-        # Use ChatBedrock LLM (matching textGeneration pattern)
+        # Stage 6: LLM invocation (typically the slowest)
         logger.info(f"Invoking LLM for {material_type} generation")
+        stage_start = time.time()
         response = _llm.invoke(prompt)
+        timings["llm_invoke"] = int((time.time() - stage_start) * 1000)
         output_text = response.content
-        logger.info(f"Received response from LLM, length: {len(output_text)}")
+        logger.info(f"[TIMING] llm_invoke: {timings['llm_invoke']}ms (response length: {len(output_text)})")
+        
+        # Log timing summary
+        total_timed = sum(timings.values())
+        logger.info(f"[TIMING SUMMARY] Total tracked time: {total_timed}ms | Breakdown: {json.dumps(timings)}")
         
         # Always log the full raw output for debugging
         logger.info(f"Raw LLM output (full): {output_text}")
 
+        # Stage 7: Parse and validate response
+        stage_start = time.time()
         try:
             if material_type == "mcq":
                 result = validate_shape(extract_json(output_text), num_questions, num_options)
@@ -683,15 +715,25 @@ def handler(event, context):
                 result = validate_flashcard_shape(extract_json(output_text), num_cards)
             else:  # short_answer
                 result = validate_short_answer_shape(extract_json(output_text), num_questions)
+            timings["parse_validate"] = int((time.time() - stage_start) * 1000)
+            logger.info(f"[TIMING] parse_validate: {timings['parse_validate']}ms")
         except Exception as e1:
-            logger.warning(f"First parse/validation failed: {e1}")
+            timings["parse_validate_failed"] = int((time.time() - stage_start) * 1000)
+            logger.warning(f"[TIMING] parse_validate_failed: {timings['parse_validate_failed']}ms - {e1}")
             logger.warning(f"Raw LLM output (first 2000 chars): {output_text[:2000]}")
             retry_prompt = prompt + "\n\nIMPORTANT: Your previous response was invalid. You MUST return valid JSON only, exactly matching the schema and lengths. No extra commentary."
             logger.info("Retrying with enhanced prompt")
+            
+            # Stage 8: Retry LLM invocation
+            stage_start = time.time()
             response2 = _llm.invoke(retry_prompt)
+            timings["llm_retry"] = int((time.time() - stage_start) * 1000)
             output_text2 = response2.content
-            logger.info(f"Retry response length: {len(output_text2)}")
+            logger.info(f"[TIMING] llm_retry: {timings['llm_retry']}ms (response length: {len(output_text2)})")
             logger.info(f"Raw retry LLM output (full): {output_text2}")
+            
+            # Stage 9: Parse and validate retry response
+            stage_start = time.time()
             try:
                 if material_type == "mcq":
                     result = validate_shape(extract_json(output_text2), num_questions, num_options)
@@ -699,6 +741,8 @@ def handler(event, context):
                     result = validate_flashcard_shape(extract_json(output_text2), num_cards)
                 else:  # short_answer
                     result = validate_short_answer_shape(extract_json(output_text2), num_questions)
+                timings["parse_validate_retry"] = int((time.time() - stage_start) * 1000)
+                logger.info(f"[TIMING] parse_validate_retry: {timings['parse_validate_retry']}ms")
             except Exception as e2:
                 logger.error(f"Retry also failed: {e2}")
                 logger.error(f"Raw retry output (first 2000 chars): {output_text2[:2000]}")
