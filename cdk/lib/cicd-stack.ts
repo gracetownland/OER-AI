@@ -6,6 +6,7 @@ import * as codepipeline from "aws-cdk-lib/aws-codepipeline";
 import * as codepipeline_actions from "aws-cdk-lib/aws-codepipeline-actions";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as codeconnections from "aws-cdk-lib/aws-codeconnections";
 
 interface LambdaConfig {
   name: string; // Module name (e.g., "textGeneration")
@@ -69,36 +70,34 @@ export class CICDStack extends cdk.Stack {
       "oer-owner-name"
     );
 
-    // Add source stage
+    // Create GitHub connection using CodeStar Connections
+    const githubConnection = new codeconnections.CfnConnection(
+      this,
+      "GitHubConnection",
+      {
+        connectionName: `${id}-github-connection`,
+        providerType: "GitHub",
+      }
+    );
+
+    // Output the connection ARN for reference
+    new cdk.CfnOutput(this, "GitHubConnectionArn", {
+      value: githubConnection.attrConnectionArn,
+      description: "ARN of the GitHub connection. After deployment, authorize this connection in the AWS Console.",
+    });
+
+    // Add source stage using CodeStar Connections
     pipeline.addStage({
       stageName: "Source",
       actions: [
-        new codepipeline_actions.GitHubSourceAction({
+        new codepipeline_actions.CodeStarConnectionsSourceAction({
           actionName: "GitHub",
           owner: username,
           repo: props.githubRepo,
           branch: props.githubBranch ?? "main",
-          oauthToken: cdk.SecretValue.secretsManager(
-            "github-access-token-temp",
-            {
-              jsonField: "my-github-token-temp",
-            }
-          ),
+          connectionArn: githubConnection.attrConnectionArn,
           output: sourceOutput,
-          trigger: codepipeline_actions.GitHubTrigger.WEBHOOK,
-          ...(props.pathFilters
-            ? {
-                filter: {
-                  json: JSON.stringify({
-                    push: {
-                      paths: {
-                        includes: props.pathFilters,
-                      },
-                    },
-                  }),
-                },
-              }
-            : {}),
+          triggerOnPush: true,
         }),
       ],
     });
@@ -159,10 +158,6 @@ export class CICDStack extends cdk.Stack {
             REPOSITORY_URI: { value: ecrRepo.repositoryUri },
             GITHUB_USERNAME: { value: username },
             GITHUB_REPO: { value: props.githubRepo },
-            GITHUB_TOKEN: {
-              type: codebuild.BuildEnvironmentVariableType.SECRETS_MANAGER,
-              value: "github-access-token-temp:my-github-token-temp",
-            },
             PATH_FILTER: { value: lambda.sourceDir },
           },
           buildSpec: codebuild.BuildSpec.fromObject({
@@ -174,21 +169,28 @@ export class CICDStack extends cdk.Stack {
                   "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com",
                   'echo "#!/bin/bash" > check_and_build.sh',
                   'echo "set -e" >> check_and_build.sh',
-                  'echo "git clone https://$GITHUB_TOKEN@github.com/$GITHUB_USERNAME/$GITHUB_REPO.git repo" >> check_and_build.sh',
-                  'echo "cd repo" >> check_and_build.sh',
-                  'echo "git fetch origin" >> check_and_build.sh',
-                  'echo "git checkout $CODEBUILD_RESOLVED_SOURCE_VERSION" >> check_and_build.sh',
+                  'echo "# Source is provided by CodePipeline via CodeStar Connection" >> check_and_build.sh',
+                  'echo "cd $CODEBUILD_SRC_DIR" >> check_and_build.sh',
                   'echo "# Check if image exists in ECR" >> check_and_build.sh',
                   'echo "if ! aws ecr describe-images --repository-name $REPO_NAME --image-ids imageTag=latest &>/dev/null; then" >> check_and_build.sh',
-                  'echo "  echo \\"First deployment or image doesn\'t exist - building without path check\\"" >> check_and_build.sh',
+                  'echo "  echo \\\"First deployment or image doesn\'t exist - building without path check\\\"" >> check_and_build.sh',
                   'echo "  exit 0" >> check_and_build.sh',
                   'echo "fi" >> check_and_build.sh',
-                  'echo "PREV_COMMIT=\\$(git rev-parse HEAD~1 || echo \\"\\")" >> check_and_build.sh',
+                  'echo "# Initialize git if needed (CodePipeline source may not have .git)" >> check_and_build.sh',
+                  'echo "if [ ! -d .git ]; then" >> check_and_build.sh',
+                  'echo "  echo \\\"No git history available - building to be safe\\\"" >> check_and_build.sh',
+                  'echo "  exit 0" >> check_and_build.sh',
+                  'echo "fi" >> check_and_build.sh',
+                  'echo "PREV_COMMIT=\\$(git rev-parse HEAD~1 || echo \\\"\\\")" >> check_and_build.sh',
+                  'echo "if [ -z \\\"\\$PREV_COMMIT\\\" ]; then" >> check_and_build.sh',
+                  'echo "  echo \\\"First commit - building\\\"" >> check_and_build.sh',
+                  'echo "  exit 0" >> check_and_build.sh',
+                  'echo "fi" >> check_and_build.sh',
                   'echo "CHANGED_FILES=\\$(git diff --name-only \\$PREV_COMMIT HEAD)" >> check_and_build.sh',
-                  'echo "echo \\"Changed files:\\"" >> check_and_build.sh',
-                  'echo "echo \\"\\$CHANGED_FILES\\"" >> check_and_build.sh',
-                  'echo "if ! echo \\"\\$CHANGED_FILES\\" | grep -q \\"^$PATH_FILTER/\\"; then" >> check_and_build.sh',
-                  'echo "  echo \\"No changes in $PATH_FILTER — skipping build.\\"" >> check_and_build.sh',
+                  'echo "echo \\\"Changed files:\\\"" >> check_and_build.sh',
+                  'echo "echo \\\"\\$CHANGED_FILES\\\"" >> check_and_build.sh',
+                  'echo "if ! echo \\\"\\$CHANGED_FILES\\\" | grep -q \\\"^$PATH_FILTER/\\\"; then" >> check_and_build.sh',
+                  'echo "  echo \\\"No changes in $PATH_FILTER — skipping build.\\\"" >> check_and_build.sh',
                   'echo "  exit 1" >> check_and_build.sh',
                   'echo "fi" >> check_and_build.sh',
                   'echo "exit 0" >> check_and_build.sh',
