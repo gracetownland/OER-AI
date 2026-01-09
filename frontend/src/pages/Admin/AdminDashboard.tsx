@@ -11,7 +11,7 @@ import logoImage from "@/assets/OER_logo_black.png";
 
 export default function AdminDashboard() {
   const [activeView, setActiveView] = useState<
-    "dashboard" | "analytics" | "ai-settings" | "faqs-prompts"
+    "dashboard" | "analytics" | "ai-settings" | "faqs-prompts" | "media" | "content-sections"
   >("dashboard");
 
   return (
