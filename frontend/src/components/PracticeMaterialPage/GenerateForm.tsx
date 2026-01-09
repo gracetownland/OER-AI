@@ -27,11 +27,11 @@ const mcqSchema = z.object({
   numQuestions: z
     .number()
     .min(1, "Must be at least 1")
-    .max(8, "Maximum 8 questions"),
+    .max(20, "Maximum 20 questions"),
   numOptions: z
     .number()
     .min(2, "Must be at least 2")
-    .max(8, "Maximum 8 options"),
+    .max(6, "Maximum 6 options"),
   difficulty: z.enum(["beginner", "intermediate", "advanced"]),
 });
 
@@ -95,9 +95,9 @@ export function GenerateForm({ onGenerate }: GenerateFormProps) {
   const handleMaterialTypeChange = (value: "mcq" | "flashcards" | "shortAnswer") => {
     console.log("=== Material Type Change ===");
     console.log("New value:", value);
-    
+
     setCurrentMaterialType(value);
-    
+
     if (value === "flashcards") {
       console.log("Resetting to flashcard defaults");
       reset({
@@ -152,7 +152,7 @@ export function GenerateForm({ onGenerate }: GenerateFormProps) {
               name="materialType"
               control={control}
               render={({ field }) => (
-                <Select 
+                <Select
                   value={currentMaterialType}
                   onValueChange={(value) => {
                     const newType = value as "mcq" | "flashcards" | "shortAnswer";
