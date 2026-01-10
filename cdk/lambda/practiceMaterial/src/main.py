@@ -173,7 +173,7 @@ def initialize_constants():
         llm_client = boto3.client("bedrock-runtime", region_name=_bedrock_region)
         model_kwargs = {
             "temperature": 0.6,
-            "max_tokens": 2048,
+            "max_tokens": 4096,
             "top_p": 0.9,
         }
         logger.info(f"Creating ChatBedrock instance for model: {_practice_material_model_id}")
@@ -796,6 +796,8 @@ def handler(event, context):
             except Exception as e2:
                 logger.error(f"Retry also failed: {e2}")
                 logger.error(f"Raw retry output (first 2000 chars): {output_text2[:2000]}")
+                # Send error via WebSocket for streaming clients
+                send_progress("error", 0, error=f"Failed to parse LLM response: {str(e2)}")
                 # Return the raw LLM responses to client for debugging
                 return finalize({
                     "statusCode": 500,
