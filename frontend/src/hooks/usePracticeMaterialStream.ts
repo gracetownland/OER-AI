@@ -69,6 +69,8 @@ export const usePracticeMaterialStream = (
         setProgress(progressMsg.progress);
 
         if (progressMsg.status === "complete" && progressMsg.data) {
+            console.log("[PracticeMaterialStream] Complete! Data received:", progressMsg.data);
+            console.log("[PracticeMaterialStream] Questions count:", progressMsg.data.questions?.length);
             setResult(progressMsg.data);
             isGeneratingRef.current = false;
         } else if (progressMsg.status === "error") {

@@ -249,10 +249,10 @@ export default function AIChatPage() {
               prev.map((msg) =>
                 msg.id === streamingMessageId
                   ? {
-                      ...msg,
-                      text: msg.text + message.content,
-                      isTyping: false,
-                    }
+                    ...msg,
+                    text: msg.text + message.content,
+                    isTyping: false,
+                  }
                   : msg
               )
             );
@@ -285,10 +285,10 @@ export default function AIChatPage() {
               prev.map((msg) =>
                 msg.id === streamingMessageId
                   ? {
-                      ...msg,
-                      text: message.message || "An error occurred",
-                      isTyping: false,
-                    }
+                    ...msg,
+                    text: message.message || "An error occurred",
+                    isTyping: false,
+                  }
                   : msg
               )
             );
@@ -351,8 +351,7 @@ export default function AIChatPage() {
 
         // Fetch shared chat history from the public endpoint
         const response = await fetch(
-          `${
-            import.meta.env.VITE_API_ENDPOINT
+          `${import.meta.env.VITE_API_ENDPOINT
           }/chat_sessions/${shareParam}/interactions`,
           {
             headers: {
@@ -498,8 +497,7 @@ export default function AIChatPage() {
 
         // Get interactions for the specific chat session
         const response = await fetch(
-          `${
-            import.meta.env.VITE_API_ENDPOINT
+          `${import.meta.env.VITE_API_ENDPOINT
           }/user_sessions/${sessionUuid}/chat_sessions/${activeChatSessionId}/interactions`,
           {
             headers: {
@@ -618,8 +616,7 @@ export default function AIChatPage() {
 
       // Pass role as query param to backend
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${
-          textbook.id
+        `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${textbook.id
         }/shared_prompts?role=${mode}`,
         {
           headers: {
@@ -647,8 +644,7 @@ export default function AIChatPage() {
         const { token } = await tokenResponse.json();
 
         const questionsResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/prompt_templates/${
-            template.id
+          `${import.meta.env.VITE_API_ENDPOINT}/prompt_templates/${template.id
           }/questions`,
           {
             headers: {
@@ -918,8 +914,7 @@ export default function AIChatPage() {
       const { token } = await tokenResponse.json();
 
       const response = await fetch(
-        `${
-          import.meta.env.VITE_API_ENDPOINT
+        `${import.meta.env.VITE_API_ENDPOINT
         }/chat_sessions/${activeChatSessionId}/text_generation`,
         {
           method: "POST",
@@ -945,11 +940,11 @@ export default function AIChatPage() {
         prev.map((msg) =>
           msg.id === botMsg.id
             ? {
-                ...msg,
-                text: data.response || "Sorry, I couldn't generate a response.",
-                sources_used: data.sources || [],
-                isTyping: false,
-              }
+              ...msg,
+              text: data.response || "Sorry, I couldn't generate a response.",
+              sources_used: data.sources || [],
+              isTyping: false,
+            }
             : msg
         )
       );
@@ -965,10 +960,10 @@ export default function AIChatPage() {
         prev.map((msg) =>
           msg.id === botMsg.id
             ? {
-                ...msg,
-                text: "Sorry, there was an error processing your request.",
-                isTyping: false,
-              }
+              ...msg,
+              text: "Sorry, there was an error processing your request.",
+              isTyping: false,
+            }
             : msg
         )
       );
@@ -1070,18 +1065,16 @@ export default function AIChatPage() {
   return (
     <div className="w-full max-w-2xl 2xl:max-w-3xl px-4 py-4">
       <div
-        className={`flex flex-col w-full ${
-          messages.length === 0
+        className={`flex flex-col w-full ${messages.length === 0
             ? "justify-center"
             : "justify-between min-h-[90vh]"
-        }`}
+          }`}
       >
         <div
-          className={`flex flex-col w-full max-w-2xl 2xl:max-w-3xl px-4 py-4 ${
-            messages.length === 0
+          className={`flex flex-col w-full max-w-2xl 2xl:max-w-3xl px-4 py-4 ${messages.length === 0
               ? "justify-center"
               : "justify-between min-h-[90vh]"
-          }`}
+            }`}
         >
           {/* top section */}
           <div>
@@ -1182,12 +1175,6 @@ export default function AIChatPage() {
                 placeholder={`Ask anything about ${textbookTitle}`}
                 onSend={sendMessage}
               />
-              <div className="text-xs text-muted-foreground mt-1">
-                {/* Connection Status Indicator (for debugging) */}
-                WebSocket: {connectionState} {isConnected && "🟢"}{" "}
-                {connectionState === "connecting" && "🟡"}{" "}
-                {connectionState === "disconnected" && "🔴"}
-              </div>
             </div>
 
             {/* Prompt Suggestions */}
@@ -1230,9 +1217,8 @@ export default function AIChatPage() {
               >
                 {seeMore ? "Show less" : "See more prompts"}
                 <ChevronDown
-                  className={`h-4 w-4 transition-transform ${
-                    seeMore ? "rotate-180" : ""
-                  }`}
+                  className={`h-4 w-4 transition-transform ${seeMore ? "rotate-180" : ""
+                    }`}
                 />
               </Button>
             </div>
