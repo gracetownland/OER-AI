@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useWebSocket } from "./useWebSocket";
 
 interface PracticeMaterialProgress {
@@ -35,6 +35,7 @@ interface UsePracticeMaterialStreamReturn {
     result: PracticeMaterialResult | null;
     error: string | null;
     isGenerating: boolean;
+    isConnected: boolean;
 }
 
 /**
@@ -54,7 +55,8 @@ export const usePracticeMaterialStream = (
     const [progress, setProgress] = useState(0);
     const [result, setResult] = useState<PracticeMaterialResult | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const isGeneratingRef = useRef(false);
+    // Use state instead of ref for reactivity - UI will re-render when this changes
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleMessage = useCallback((message: any) => {
         // Only handle practice material progress messages
@@ -68,14 +70,16 @@ export const usePracticeMaterialStream = (
         setStatus(progressMsg.status);
         setProgress(progressMsg.progress);
 
-        if (progressMsg.status === "complete" && progressMsg.data) {
+        if (progressMsg.status === "complete") {
             console.log("[PracticeMaterialStream] Complete! Data received:", progressMsg.data);
-            console.log("[PracticeMaterialStream] Questions count:", progressMsg.data.questions?.length);
-            setResult(progressMsg.data);
-            isGeneratingRef.current = false;
+            console.log("[PracticeMaterialStream] Questions count:", progressMsg.data?.questions?.length);
+            // Set result even if data is missing (will be null)
+            setResult(progressMsg.data ?? null);
+            // Always stop generating on complete, even if data is missing
+            setIsGenerating(false);
         } else if (progressMsg.status === "error") {
             setError(progressMsg.error || "Unknown error");
-            isGeneratingRef.current = false;
+            setIsGenerating(false);
         }
     }, []);
 
@@ -88,12 +92,18 @@ export const usePracticeMaterialStream = (
     });
 
     const generate = useCallback((params: GeneratePracticeMaterialParams) => {
-        if (!isConnected) {
-            setError("WebSocket not connected");
+        // Validate WebSocket URL is available
+        if (!websocketUrl) {
+            setError("WebSocket not configured. Please refresh the page.");
             return;
         }
 
-        if (isGeneratingRef.current) {
+        if (!isConnected) {
+            setError("WebSocket not connected. Please wait for connection or refresh the page.");
+            return;
+        }
+
+        if (isGenerating) {
             console.warn("[PracticeMaterialStream] Generation already in progress");
             return;
         }
@@ -103,7 +113,7 @@ export const usePracticeMaterialStream = (
         setProgress(0);
         setResult(null);
         setError(null);
-        isGeneratingRef.current = true;
+        setIsGenerating(true);
 
         const message = {
             action: "generate_practice_material",
@@ -123,14 +133,15 @@ export const usePracticeMaterialStream = (
         if (!success) {
             setError("Failed to send message");
             setStatus("error");
-            isGeneratingRef.current = false;
+            setIsGenerating(false);
         }
-    }, [isConnected, sendMessage]);
+    }, [websocketUrl, isConnected, isGenerating, sendMessage]);
 
     const cancel = useCallback(() => {
-        isGeneratingRef.current = false;
+        setIsGenerating(false);
         setStatus("idle");
         setProgress(0);
+        setResult(null); // Clear result on cancel
         setError(null);
     }, []);
 
@@ -146,6 +157,7 @@ export const usePracticeMaterialStream = (
         progress,
         result,
         error,
-        isGenerating: isGeneratingRef.current,
+        isGenerating,
+        isConnected,
     };
 };

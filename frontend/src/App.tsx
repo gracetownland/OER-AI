@@ -30,7 +30,25 @@ Amplify.configure({
   },
 });
 
+// Pre-warm Lambdas on app load to reduce cold start latency
+function useLambdaWarmup() {
+  const apiEndpoint = import.meta.env.VITE_API_ENDPOINT;
+
+  if (!apiEndpoint) return;
+
+  // Fire-and-forget warmup requests - use HEAD to trigger warmup without heavy processing
+  // Practice Material Lambda
+  fetch(`${apiEndpoint}/textbooks/warmup/practice_materials`, { method: 'HEAD' })
+    .catch(() => { }); // Ignore errors - warmup is best-effort
+
+  // Text Generation Lambda (if applicable)
+  // fetch(`${apiEndpoint}/warmup/textgen`, { method: 'HEAD' }).catch(() => {});
+}
+
 function App() {
+  // Trigger Lambda warmup once on app mount
+  useLambdaWarmup();
+
   return (
     <BrowserRouter>
       <UserSessionProvider>

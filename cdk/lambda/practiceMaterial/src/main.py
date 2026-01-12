@@ -639,6 +639,16 @@ def handler(event, context):
 
     logger.info("PracticeMaterial Lambda (Docker) invoked")
 
+    # Handle warmup requests - return immediately after initialization
+    if event.get("warmup") or event.get("httpMethod") == "HEAD":
+        logger.info("Warmup request received - initializing and returning early")
+        try:
+            initialize_constants()
+            logger.info("Warmup successful - models initialized")
+        except Exception as e:
+            logger.warning(f"Warmup initialization failed: {e}")
+        return {"statusCode": 200, "body": json.dumps({"status": "warm"})}
+
     # Validate path and parse inputs
     resource = (event.get("httpMethod", "") + " " + event.get("resource", "")).strip()
     

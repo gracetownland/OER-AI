@@ -53,6 +53,12 @@ exports.handler = async (event) => {
       // Extract practice material specific fields
       const { material_type, topic, difficulty, num_questions, num_options, num_cards, card_type } = body;
 
+      // Validate required fields
+      if (!topic || typeof topic !== 'string' || topic.trim() === '') {
+        console.log("Missing or invalid topic field");
+        return { statusCode: 400, body: JSON.stringify({ error: "Topic is required" }) };
+      }
+
       const practicePayload = {
         pathParameters: {
           textbook_id: textbook_id,

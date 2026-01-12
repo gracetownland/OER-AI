@@ -87,7 +87,7 @@ export default function PracticeMaterialPage() {
     progress,
     result,
     error: streamError,
-    isGenerating,
+    isConnected,
   } = usePracticeMaterialStream(wsUrl);
 
   // Handle successful result from WebSocket streaming
@@ -157,9 +157,11 @@ export default function PracticeMaterialPage() {
             </div>
           )}
 
-          {/* Legacy generating state fallback */}
-          {isGenerating && status === "idle" && (
-            <p className="text-sm text-muted-foreground mt-2">Generating practice materials...</p>
+          {/* Connection warning */}
+          {!isConnected && !isProcessing && (
+            <p className="text-sm text-amber-600 mt-2">
+              ⚠️ Connecting to server... Please wait.
+            </p>
           )}
 
           {errorMsg && (
