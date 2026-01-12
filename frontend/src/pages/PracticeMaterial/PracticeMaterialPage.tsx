@@ -49,12 +49,19 @@ export default function PracticeMaterialPage() {
         if (!isActive) return;
 
         setWsToken(token);
-        refreshTimeoutId = window.setTimeout(fetchToken, refreshDelayMs);
+        // Check isActive before scheduling to prevent race condition
+        if (isActive) {
+          refreshTimeoutId = window.setTimeout(fetchToken, refreshDelayMs);
+        }
       } catch (error) {
         console.error("[PracticeMaterial] Failed to fetch token:", error);
+        if (!isActive) return;
+
         setWsToken(null);
-        // Retry in 30 seconds
-        refreshTimeoutId = window.setTimeout(fetchToken, 30000);
+        // Check isActive before scheduling retry to prevent race condition
+        if (isActive) {
+          refreshTimeoutId = window.setTimeout(fetchToken, 30000);
+        }
       }
     }
 

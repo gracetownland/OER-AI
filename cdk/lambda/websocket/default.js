@@ -54,6 +54,11 @@ exports.handler = async (event) => {
       const { material_type, topic, difficulty, num_questions, num_options, num_cards, card_type } = body;
 
       // Validate required fields
+      if (!textbook_id || typeof textbook_id !== 'string' || textbook_id.trim() === '') {
+        console.log("Missing or invalid textbook_id field");
+        return { statusCode: 400, body: JSON.stringify({ error: "textbook_id is required" }) };
+      }
+
       if (!topic || typeof topic !== 'string' || topic.trim() === '') {
         console.log("Missing or invalid topic field");
         return { statusCode: 400, body: JSON.stringify({ error: "Topic is required" }) };

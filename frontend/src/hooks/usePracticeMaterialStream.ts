@@ -108,6 +108,17 @@ export const usePracticeMaterialStream = (
             return;
         }
 
+        // Validate required fields
+        if (!params.textbook_id || params.textbook_id.trim() === '') {
+            setError("Textbook ID is required.");
+            return;
+        }
+
+        if (!params.topic || params.topic.trim() === '') {
+            setError("Topic is required.");
+            return;
+        }
+
         // Reset state
         setStatus("initializing");
         setProgress(0);
