@@ -26,8 +26,7 @@ COLD_START_METRIC = os.environ.get("COLD_START_METRIC", "false").lower() == "tru
 # AWS Clients
 secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
-bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')  # For embeddings
-bedrock_guardrails = boto3.client("bedrock-runtime", region_name=REGION)  # For guardrails (same region as guardrail)
+bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')  # For embeddings (Cohere is in us-east-1)
 
 # Cache
 _db_secret: Dict[str, Any] | None = None
@@ -218,7 +217,9 @@ def apply_guardrails(text: str, source: str = "INPUT") -> dict:
         return {'blocked': False, 'action': 'NONE', 'assessments': []}
     
     try:
-        response = bedrock_guardrails.apply_guardrail(
+        # Create client without region - uses Lambda's default region (ca-central-1)
+        bedrock_client = boto3.client("bedrock-runtime")
+        response = bedrock_client.apply_guardrail(
             guardrailIdentifier=_guardrail_id,
             guardrailVersion="1",  # Published version
             source=source,
