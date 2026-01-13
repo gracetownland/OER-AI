@@ -48,7 +48,8 @@ Rules:
 - Concise explanations (1 sentence max)
 - Valid JSON, no markdown
 
-Output JSON:
+Output JSON:"""
+
 
 
 def validate_mcq_shape(obj: Dict[str, Any], num_questions: int, num_options: int) -> Dict[str, Any]:
