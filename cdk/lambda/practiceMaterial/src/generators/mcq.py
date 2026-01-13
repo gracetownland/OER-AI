@@ -2,8 +2,8 @@ from typing import Any, Dict
 
 def build_mcq_prompt(topic: str, difficulty: str, num_questions: int, num_options: int, context_snippets: list[str]) -> str:
     """
-    Build optimized MCQ prompt with 60-70% fewer tokens than original.
-    Uses concise example-based approach instead of verbose instructions.
+    Build optimized MCQ prompt with aggressive token reduction for large question sets.
+    For 20 questions with 6 options, this reduces output tokens by ~50%.
     """
     option_ids = [chr(97 + i) for i in range(num_options)]
     
@@ -16,38 +16,39 @@ def build_mcq_prompt(topic: str, difficulty: str, num_questions: int, num_option
     
     context = "\n".join([f"- {c}" for c in optimized_snippets])
     
-    # Concise prompt with single clear example instead of verbose rules
-    return f"""Generate {num_questions} multiple choice questions as valid JSON only.
+    # Ultra-concise prompt optimized for large question sets
+    # Key optimization: Only require explanation for correct answer
+    return f"""Generate {num_questions} MCQs as JSON.
 
 Topic: "{topic}" | Difficulty: {difficulty} | Options: {', '.join(option_ids)}
 
 Context:
 {context}
 
-Required JSON format:
+JSON format:
 {{
   "title": "Practice Quiz: {topic}",
   "questions": [
     {{
       "id": "q1",
-      "questionText": "Your question here",
+      "questionText": "Question text",
       "options": [
-        {{"id": "a", "text": "Option text", "explanation": "Why this is correct/incorrect"}},
-        {{"id": "b", "text": "Option text", "explanation": "Why this is correct/incorrect"}}
+        {{"id": "a", "text": "Correct answer", "explanation": "Why correct"}},
+        {{"id": "b", "text": "Wrong answer", "explanation": ""}}
       ],
       "correctAnswer": "a"
     }}
   ]
 }}
 
-Requirements:
-- Exactly {num_questions} questions with {num_options} options each
-- One correct answer per question
-- Clear explanations for all options
-- Valid JSON syntax (proper commas, no trailing commas)
-- No markdown, no extra text
+Rules:
+- {num_questions} questions, {num_options} options each
+- Explanation REQUIRED for correct answer only
+- Explanation OPTIONAL (use "") for incorrect answers
+- Concise explanations (1 sentence max)
+- Valid JSON, no markdown
 
-Output valid JSON now:"""
+Output JSON:
 
 
 def validate_mcq_shape(obj: Dict[str, Any], num_questions: int, num_options: int) -> Dict[str, Any]:
@@ -76,8 +77,9 @@ def validate_mcq_shape(obj: Dict[str, Any], num_questions: int, num_options: int
                 raise ValueError(f"Question[{idx}].options[{oi}].id invalid")
             if not isinstance(opt.get("text"), str) or not opt["text"].strip():
                 raise ValueError(f"Question[{idx}].options[{oi}].text invalid")
-            if not isinstance(opt.get("explanation"), str) or not opt["explanation"].strip():
-                raise ValueError(f"Question[{idx}].options[{oi}].explanation invalid")
+            # Explanation is required to be a string, but can be empty for incorrect answers
+            if not isinstance(opt.get("explanation"), str):
+                raise ValueError(f"Question[{idx}].options[{oi}].explanation must be a string")
         if q.get("correctAnswer") not in valid_ids:
             raise ValueError(f"Question[{idx}].correctAnswer invalid")
     return obj

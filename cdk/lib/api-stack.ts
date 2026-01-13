@@ -1845,7 +1845,7 @@ export class ApiGatewayStack extends cdk.Stack {
           { tagOrDigest: "latest" }
         ),
         memorySize: 1024,
-        timeout: cdk.Duration.seconds(120),
+        timeout: cdk.Duration.seconds(300),
         vpc: vpcStack.vpc,
         functionName: `${id}-PracticeMaterialLambdaDockerFunction`,
         environment: {

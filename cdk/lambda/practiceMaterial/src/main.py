@@ -32,16 +32,47 @@ secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')  # For embeddings (Cohere is in us-east-1)
 
-# Cache
+# Cache for secrets and connections
 _db_secret: Dict[str, Any] | None = None
-_practice_material_model_id: str | None = None
-_embedding_model_id: str | None = None
-_bedrock_region: str | None = None
-_guardrail_id: str | None = None
+_connection_pool = None
 _embeddings = None
 _llm = None
 _is_cold_start = True
-_connection_pool = None
+
+# Pre-loaded configuration - loaded at container startup (outside handler)
+PRACTICE_MATERIAL_MODEL_ID: str | None = None
+EMBEDDING_MODEL_ID: str | None = None
+BEDROCK_REGION: str | None = None
+GUARDRAIL_ID: str | None = None
+
+# Pre-load critical configuration during container startup
+try:
+    logger.info("Pre-loading critical configuration...")
+    
+    # Pre-fetch SSM parameters
+    if PRACTICE_MATERIAL_MODEL_PARAM:
+        PRACTICE_MATERIAL_MODEL_ID = ssm_client.get_parameter(Name=PRACTICE_MATERIAL_MODEL_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded PRACTICE_MATERIAL_MODEL_ID: {PRACTICE_MATERIAL_MODEL_ID}")
+    
+    if EMBEDDING_MODEL_PARAM:
+        EMBEDDING_MODEL_ID = ssm_client.get_parameter(Name=EMBEDDING_MODEL_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded EMBEDDING_MODEL_ID: {EMBEDDING_MODEL_ID}")
+    
+    if BEDROCK_REGION_PARAM:
+        BEDROCK_REGION = ssm_client.get_parameter(Name=BEDROCK_REGION_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded BEDROCK_REGION: {BEDROCK_REGION}")
+    else:
+        BEDROCK_REGION = REGION
+        logger.info(f"Using deployment region as BEDROCK_REGION: {BEDROCK_REGION}")
+    
+    if GUARDRAIL_ID_PARAM:
+        GUARDRAIL_ID = ssm_client.get_parameter(Name=GUARDRAIL_ID_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded GUARDRAIL_ID")
+    
+    logger.info("Pre-loading completed successfully")
+except Exception as e:
+    logger.warning(f"Pre-loading failed (will load on-demand): {e}")
+
 
 
 def emit_cold_start_metrics(function_name: str, execution_ms: int, cold_start_ms: int | None) -> None:
@@ -164,68 +195,49 @@ def get_connection_pool():
     return _connection_pool
 
 
-def get_parameter(param_name: str | None, cached_var: str | None) -> str | None:
-    """Fetch SSM parameter value and update cache"""
-    if cached_var is None and param_name:
-        try:
-            response = ssm_client.get_parameter(Name=param_name, WithDecryption=True)
-            cached_var = response["Parameter"]["Value"]
-        except Exception as e:
-            logger.error(f"Error fetching parameter {param_name}: {e}")
-            raise
-    return cached_var
-
-
 def initialize_constants():
-    """Initialize model IDs and region from SSM parameters"""
-    global _practice_material_model_id, _embedding_model_id, _bedrock_region, _embeddings, _llm, _guardrail_id
+    """Initialize LLM and embeddings using pre-loaded configuration.
     
-    # Get practice material model ID from SSM
-    _practice_material_model_id = get_parameter(PRACTICE_MATERIAL_MODEL_PARAM, _practice_material_model_id)
-    logger.info(f"Practice material model ID: {_practice_material_model_id}")
+    This function is now mostly for lazy-loading LLM and embeddings.
+    SSM parameters are pre-loaded at module import time.
+    """
+    global _embeddings, _llm
     
-    # Get embedding model ID from SSM
-    _embedding_model_id = get_parameter(EMBEDDING_MODEL_PARAM, _embedding_model_id)
-    logger.info(f"Embedding model ID: {_embedding_model_id}")
+    # Verify pre-loaded configuration
+    if PRACTICE_MATERIAL_MODEL_ID is None:
+        logger.warning("PRACTICE_MATERIAL_MODEL_ID not pre-loaded")
+        return
     
-    # Get Bedrock region parameter
-    if BEDROCK_REGION_PARAM:
-        _bedrock_region = get_parameter(BEDROCK_REGION_PARAM, _bedrock_region)
-        logger.info(f"Using Bedrock region: {_bedrock_region}")
-    else:
-        _bedrock_region = REGION
-        logger.info(f"BEDROCK_REGION_PARAM not configured, using deployment region: {_bedrock_region}")
+    if EMBEDDING_MODEL_ID is None:
+        logger.warning("EMBEDDING_MODEL_ID not pre-loaded")
+        return
     
-    # Get Guardrail ID from SSM
-    if GUARDRAIL_ID_PARAM and _guardrail_id is None:
-        try:
-            _guardrail_id = get_parameter(GUARDRAIL_ID_PARAM, _guardrail_id)
-            logger.info(f"Guardrail ID loaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to load guardrail ID: {e}")
-            _guardrail_id = None
+    logger.info(f"Using pre-loaded configuration - LLM: {PRACTICE_MATERIAL_MODEL_ID}, Embeddings: {EMBEDDING_MODEL_ID}, Region: {BEDROCK_REGION}")
     
+    # Initialize embeddings if not already done
     if _embeddings is None:
         _embeddings = BedrockEmbeddings(
-            model_id=_embedding_model_id,
+            model_id=EMBEDDING_MODEL_ID,
             client=bedrock_runtime,
             region_name='us-east-1',
             model_kwargs = {"input_type": "search_query"}
         )
+        logger.info("Embeddings initialized successfully")
     
+    # Initialize LLM if not already done
     if _llm is None:
-        # Create bedrock client for LLM in the appropriate region (easter egg 2)
-        llm_client = boto3.client("bedrock-runtime", region_name=_bedrock_region)
+        # Create bedrock client for LLM in the appropriate region
+        llm_client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
         model_kwargs = {
             "temperature": 0.6,
             "max_tokens": 4096,
             "top_p": 0.9,
         }
-        logger.info(f"Creating ChatBedrock instance for model: {_practice_material_model_id}")
+        logger.info(f"Creating ChatBedrock instance for model: {PRACTICE_MATERIAL_MODEL_ID}")
         logger.info(f"Model parameters: {json.dumps(model_kwargs)}")
         
         _llm = ChatBedrock(
-            model_id=_practice_material_model_id,
+            model_id=PRACTICE_MATERIAL_MODEL_ID,
             model_kwargs=model_kwargs,
             client=llm_client
         )
@@ -244,18 +256,17 @@ def apply_guardrails(text: str, source: str = "INPUT") -> dict:
     Returns:
         dict with 'blocked', 'action', and 'assessments' keys
     """
-    global _guardrail_id
     
-    if not _guardrail_id:
+    if not GUARDRAIL_ID:
         logger.debug("No guardrail ID configured, skipping guardrail check")
         return {'blocked': False, 'action': 'NONE', 'assessments': []}
     
     try:
-        # Create client without region - uses Lambda's default region (ca-central-1)
-        bedrock_client = boto3.client("bedrock-runtime")
+        # Create bedrock client in the correct region for guardrails
+        bedrock_client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
         response = bedrock_client.apply_guardrail(
-            guardrailIdentifier=_guardrail_id,
-            guardrailVersion="1",  # Published version
+            GuardrailIdentifier=GUARDRAIL_ID,
+            GuardrailVersion="DRAFT",
             source=source,
             content=[{"text": {"text": text}}]
         )
@@ -834,9 +845,10 @@ def handle_grading(event, context):
         }
 
 # Global initialization for Provisioned Concurrency
-# This runs when the Lambda environment is created (before the first request)
+# SSM parameters are pre-loaded at module import time (lines 48-73)
+# This block initializes LLM and embeddings when the container is created
 try:
-    logger.info("Starting global initialization")
+    logger.info("Starting global LLM/embeddings initialization")
     initialize_constants()
     logger.info("Global initialization complete")
 except Exception as e:
