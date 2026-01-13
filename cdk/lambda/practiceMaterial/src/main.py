@@ -4,11 +4,15 @@ import time
 import logging
 import boto3
 import psycopg2
+import psycopg2.pool
 from typing import Any, Dict
 # import helpers
 from helpers.vectorstore import get_textbook_retriever
 from langchain_aws import BedrockEmbeddings, ChatBedrock
 # practice material grading handler
+from generators.mcq import build_mcq_prompt, validate_mcq_shape
+from generators.flashcard import build_flashcard_prompt, validate_flashcard_shape
+from generators.short_answer import build_short_answer_prompt, validate_short_answer_shape, build_grading_prompt
 # Set up logging - Lambda pre-configures root logger, so we need to set level explicitly
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -28,15 +32,47 @@ secrets_manager = boto3.client("secretsmanager", region_name=REGION)
 ssm_client = boto3.client("ssm", region_name=REGION)
 bedrock_runtime = boto3.client("bedrock-runtime", region_name='us-east-1')  # For embeddings (Cohere is in us-east-1)
 
-# Cache
+# Cache for secrets and connections
 _db_secret: Dict[str, Any] | None = None
-_practice_material_model_id: str | None = None
-_embedding_model_id: str | None = None
-_bedrock_region: str | None = None
-_guardrail_id: str | None = None
+_connection_pool = None
 _embeddings = None
 _llm = None
 _is_cold_start = True
+
+# Pre-loaded configuration - loaded at container startup (outside handler)
+PRACTICE_MATERIAL_MODEL_ID: str | None = None
+EMBEDDING_MODEL_ID: str | None = None
+BEDROCK_REGION: str | None = None
+GUARDRAIL_ID: str | None = None
+
+# Pre-load critical configuration during container startup
+try:
+    logger.info("Pre-loading critical configuration...")
+    
+    # Pre-fetch SSM parameters
+    if PRACTICE_MATERIAL_MODEL_PARAM:
+        PRACTICE_MATERIAL_MODEL_ID = ssm_client.get_parameter(Name=PRACTICE_MATERIAL_MODEL_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded PRACTICE_MATERIAL_MODEL_ID: {PRACTICE_MATERIAL_MODEL_ID}")
+    
+    if EMBEDDING_MODEL_PARAM:
+        EMBEDDING_MODEL_ID = ssm_client.get_parameter(Name=EMBEDDING_MODEL_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded EMBEDDING_MODEL_ID: {EMBEDDING_MODEL_ID}")
+    
+    if BEDROCK_REGION_PARAM:
+        BEDROCK_REGION = ssm_client.get_parameter(Name=BEDROCK_REGION_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded BEDROCK_REGION: {BEDROCK_REGION}")
+    else:
+        BEDROCK_REGION = REGION
+        logger.info(f"Using deployment region as BEDROCK_REGION: {BEDROCK_REGION}")
+    
+    if GUARDRAIL_ID_PARAM:
+        GUARDRAIL_ID = ssm_client.get_parameter(Name=GUARDRAIL_ID_PARAM, WithDecryption=True)["Parameter"]["Value"]
+        logger.info(f"Pre-loaded GUARDRAIL_ID")
+    
+    logger.info("Pre-loading completed successfully")
+except Exception as e:
+    logger.warning(f"Pre-loading failed (will load on-demand): {e}")
+
 
 
 def emit_cold_start_metrics(function_name: str, execution_ms: int, cold_start_ms: int | None) -> None:
@@ -130,68 +166,78 @@ def get_secret_dict(name: str) -> Dict[str, Any]:
     return _db_secret
 
 
-def get_parameter(param_name: str | None, cached_var: str | None) -> str | None:
-    """Fetch SSM parameter value and update cache"""
-    if cached_var is None and param_name:
+def get_connection_pool():
+    """
+    Get or create a connection pool for database operations.
+    Connection pool is reused across Lambda invocations for better performance.
+    """
+    global _connection_pool
+    
+    if _connection_pool is None:
+        logger.info("Creating new database connection pool")
+        db = get_secret_dict(SM_DB_CREDENTIALS)
+        
         try:
-            response = ssm_client.get_parameter(Name=param_name, WithDecryption=True)
-            cached_var = response["Parameter"]["Value"]
+            _connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=5,
+                dbname=db["dbname"],
+                user=db["username"],
+                password=db["password"],
+                host=RDS_PROXY_ENDPOINT,
+                port=db["port"]
+            )
+            logger.info("Connection pool created successfully")
         except Exception as e:
-            logger.error(f"Error fetching parameter {param_name}: {e}")
+            logger.error(f"Failed to create connection pool: {e}")
             raise
-    return cached_var
+    
+    return _connection_pool
 
 
 def initialize_constants():
-    """Initialize model IDs and region from SSM parameters"""
-    global _practice_material_model_id, _embedding_model_id, _bedrock_region, _embeddings, _llm, _guardrail_id
+    """Initialize LLM and embeddings using pre-loaded configuration.
     
-    # Get practice material model ID from SSM
-    _practice_material_model_id = get_parameter(PRACTICE_MATERIAL_MODEL_PARAM, _practice_material_model_id)
-    logger.info(f"Practice material model ID: {_practice_material_model_id}")
+    This function is now mostly for lazy-loading LLM and embeddings.
+    SSM parameters are pre-loaded at module import time.
+    """
+    global _embeddings, _llm
     
-    # Get embedding model ID from SSM
-    _embedding_model_id = get_parameter(EMBEDDING_MODEL_PARAM, _embedding_model_id)
-    logger.info(f"Embedding model ID: {_embedding_model_id}")
+    # Verify pre-loaded configuration
+    if PRACTICE_MATERIAL_MODEL_ID is None:
+        logger.warning("PRACTICE_MATERIAL_MODEL_ID not pre-loaded")
+        return
     
-    # Get Bedrock region parameter
-    if BEDROCK_REGION_PARAM:
-        _bedrock_region = get_parameter(BEDROCK_REGION_PARAM, _bedrock_region)
-        logger.info(f"Using Bedrock region: {_bedrock_region}")
-    else:
-        _bedrock_region = REGION
-        logger.info(f"BEDROCK_REGION_PARAM not configured, using deployment region: {_bedrock_region}")
+    if EMBEDDING_MODEL_ID is None:
+        logger.warning("EMBEDDING_MODEL_ID not pre-loaded")
+        return
     
-    # Get Guardrail ID from SSM
-    if GUARDRAIL_ID_PARAM and _guardrail_id is None:
-        try:
-            _guardrail_id = get_parameter(GUARDRAIL_ID_PARAM, _guardrail_id)
-            logger.info(f"Guardrail ID loaded successfully")
-        except Exception as e:
-            logger.warning(f"Failed to load guardrail ID: {e}")
-            _guardrail_id = None
+    logger.info(f"Using pre-loaded configuration - LLM: {PRACTICE_MATERIAL_MODEL_ID}, Embeddings: {EMBEDDING_MODEL_ID}, Region: {BEDROCK_REGION}")
     
+    # Initialize embeddings if not already done
     if _embeddings is None:
         _embeddings = BedrockEmbeddings(
-            model_id=_embedding_model_id,
+            model_id=EMBEDDING_MODEL_ID,
             client=bedrock_runtime,
             region_name='us-east-1',
             model_kwargs = {"input_type": "search_query"}
         )
+        logger.info("Embeddings initialized successfully")
     
+    # Initialize LLM if not already done
     if _llm is None:
-        # Create bedrock client for LLM in the appropriate region (easter egg 2)
-        llm_client = boto3.client("bedrock-runtime", region_name=_bedrock_region)
+        # Create bedrock client for LLM in the appropriate region
+        llm_client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
         model_kwargs = {
             "temperature": 0.6,
             "max_tokens": 4096,
             "top_p": 0.9,
         }
-        logger.info(f"Creating ChatBedrock instance for model: {_practice_material_model_id}")
+        logger.info(f"Creating ChatBedrock instance for model: {PRACTICE_MATERIAL_MODEL_ID}")
         logger.info(f"Model parameters: {json.dumps(model_kwargs)}")
         
         _llm = ChatBedrock(
-            model_id=_practice_material_model_id,
+            model_id=PRACTICE_MATERIAL_MODEL_ID,
             model_kwargs=model_kwargs,
             client=llm_client
         )
@@ -210,18 +256,17 @@ def apply_guardrails(text: str, source: str = "INPUT") -> dict:
     Returns:
         dict with 'blocked', 'action', and 'assessments' keys
     """
-    global _guardrail_id
     
-    if not _guardrail_id:
+    if not GUARDRAIL_ID:
         logger.debug("No guardrail ID configured, skipping guardrail check")
         return {'blocked': False, 'action': 'NONE', 'assessments': []}
     
     try:
-        # Create client without region - uses Lambda's default region (ca-central-1)
-        bedrock_client = boto3.client("bedrock-runtime")
+        # Create bedrock client in the correct region for guardrails
+        bedrock_client = boto3.client("bedrock-runtime", region_name=BEDROCK_REGION)
         response = bedrock_client.apply_guardrail(
-            guardrailIdentifier=_guardrail_id,
-            guardrailVersion="1",  # Published version
+            guardrailIdentifier=GUARDRAIL_ID,
+            guardrailVersion="DRAFT",
             source=source,
             content=[{"text": {"text": text}}]
         )
@@ -253,185 +298,7 @@ def clamp(value: int, lo: int, hi: int) -> int:
     return max(lo, min(hi, value))
 
 
-def build_prompt(topic: str, difficulty: str, num_questions: int, num_options: int, context_snippets: list[str]) -> str:
-    option_ids = [chr(97 + i) for i in range(num_options)]
-    context = "\n".join([f"- {c}" for c in context_snippets])
-    
-    return (
-        f"You are an assistant that generates practice multiple choice questions in strict JSON format.\n\n"
-        f"Context from textbook:\n{context}\n\n"
-        f"Your task:\n"
-        f"- Generate exactly {num_questions} multiple choice question(s)\n"
-        f"- Topic: \"{topic}\"\n"
-        f"- Difficulty: {difficulty}\n"
-        f"- Each question must have exactly {num_options} answer options\n"
-        f"- Use option IDs: {', '.join(option_ids)}\n"
-        f"- Question IDs must be: q1, q2, q3, etc.\n\n"
-        f"CRITICAL JSON SYNTAX RULES - FOLLOW EXACTLY:\n"
-        f"1. Output ONLY valid JSON - no markdown, no explanations, no preamble\n"
-        f"2. Use double quotes (\") for all strings, never single quotes\n"
-        f"3. COMMAS ARE REQUIRED between all array elements and object properties\n"
-        f"4. NEVER put a comma after the LAST item in an array or object\n"
-        f'5. Escape quotes inside strings: use \\" for a literal quote character\n'
-        f"6. Keep all text on single lines - no line breaks inside string values\n"
-        f"7. Ensure all brackets and braces are properly closed\n"
-        f"8. Pay special attention: comma BEFORE closing bracket/brace = ERROR\n\n"
-        f"CORRECT comma placement examples:\n"
-        f'- Between items: [{{"id": "a"}}, {{"id": "b"}}]  <- comma BETWEEN items\n'
-        f'- Last item has NO comma: [{{"id": "a"}}, {{"id": "b"}}]  <- no comma before ]\n'
-        f'- Object properties: {{"key1": "val1", "key2": "val2"}}  <- comma between, not after last\n\n'
-        f"Required JSON structure:\n"
-        f"{{\n"
-        f'  "title": "Practice Quiz: {topic}",\n'
-        f'  "questions": [\n'
-        f"    {{\n"
-        f'      "id": "q1",\n'
-        f'      "questionText": "Write your question here",\n'
-        f'      "options": [\n'
-        f'        {{"id": "a", "text": "First option text", "explanation": "Explanation for this option"}},\n'
-        f'        {{"id": "b", "text": "Second option text", "explanation": "Explanation for this option"}}\n'
-        f"      ],\n"
-        f'      "correctAnswer": "a"\n'
-        f"    }}\n"
-        f"  ]\n"
-        f"}}\n\n"
-        f"Content requirements:\n"
-        f"- Write specific, detailed questions based on the context provided\n"
-        f"- All options must be plausible and relevant to the question\n"
-        f"- Provide clear explanations for each option (why it's correct or incorrect)\n"
-        f"- Exactly ONE option per question should be correct\n"
-        f"- Make questions clear and unambiguous\n\n"
-        f"Common mistakes to avoid:\n"
-        f"- WRONG: Trailing comma before closing bracket: [item1, item2,]\n"
-        f"- WRONG: Missing comma between items: [item1 item2]\n"
-        f"- WRONG: Comma after last property: {{\"key\": \"value\",}}\n"
-        f"- WRONG: Unescaped quotes in strings\n"
-        f"- WRONG: Extra text before or after the JSON\n"
-        f"- WRONG: Incomplete JSON - must complete all {num_questions} questions\n\n"
-        f"Output the complete, valid JSON now:"
-    )
 
-
-def build_flashcard_prompt(topic: str, difficulty: str, num_cards: int, card_type: str, context_snippets: list[str]) -> str:
-    context = "\n".join([f"- {c}" for c in context_snippets])
-    
-    card_type_guidance = {
-        "definition": "Focus on key terms and their definitions from the material",
-        "concept": "Focus on explaining important concepts and their relationships",
-        "example": "Focus on providing concrete examples and applications"
-    }.get(card_type, "Focus on key information from the material")
-    
-    return (
-        f"You are an assistant that generates flashcards in strict JSON format.\n\n"
-        f"Context from textbook:\n{context}\n\n"
-        f"Your task:\n"
-        f"- Generate exactly {num_cards} flashcard(s)\n"
-        f"- Topic: \"{topic}\"\n"
-        f"- Difficulty: {difficulty}\n"
-        f"- Card type: {card_type}\n"
-        f"- Guidance: {card_type_guidance}\n"
-        f"- Card IDs must be: card1, card2, card3, etc.\n\n"
-        f"CRITICAL JSON SYNTAX RULES - FOLLOW EXACTLY:\n"
-        f"1. Output ONLY valid JSON - no markdown, no explanations, no preamble\n"
-        f"2. Use double quotes (\") for all strings, never single quotes\n"
-        f"3. COMMAS ARE REQUIRED between all array elements and object properties\n"
-        f"4. NEVER put a comma after the LAST item in an array or object\n"
-        f'5. Escape quotes inside strings: use \\" for a literal quote character\n'
-        f"6. Keep all text on single lines - no line breaks inside string values\n"
-        f"7. Ensure all brackets and braces are properly closed\n"
-        f"8. Pay special attention: comma BEFORE closing bracket/brace = ERROR\n\n"
-        f"CORRECT comma placement examples:\n"
-        f'- Between items: [{{"id": "card1"}}, {{"id": "card2"}}]  <- comma BETWEEN items\n'
-        f'- Last item has NO comma: [{{"id": "card1"}}, {{"id": "card2"}}]  <- no comma before ]\n'
-        f'- Object properties: {{"key1": "val1", "key2": "val2"}}  <- comma between, not after last\n\n'
-        f"Required JSON structure:\n"
-        f"{{\n"
-        f'  "title": "Flashcards: {topic}",\n'
-        f'  "cards": [\n'
-        f"    {{\n"
-        f'      "id": "card1",\n'
-        f'      "front": "Question or term on the front of the card",\n'
-        f'      "back": "Answer or definition on the back of the card",\n'
-        f'      "hint": "Optional hint to help recall the answer (can be empty string)"\n'
-        f"    }}\n"
-        f"  ]\n"
-        f"}}\n\n"
-        f"Content requirements:\n"
-        f"- Front: Clear, concise question or term\n"
-        f"- Back: Detailed, accurate answer or explanation\n"
-        f"- Hint: Optional clue (leave as empty string \"\" if not needed)\n"
-        f"- Base content on the provided context\n"
-        f"- Make cards progressively more challenging based on difficulty\n\n"
-        f"Common mistakes to avoid:\n"
-        f"- WRONG: Trailing comma before closing bracket: [card1, card2,]\n"
-        f"- WRONG: Missing comma between items: [card1 card2]\n"
-        f"- WRONG: Comma after last property: {{\"key\": \"value\",}}\n"
-        f"- WRONG: Unescaped quotes in strings\n"
-        f"- WRONG: Extra text before or after the JSON\n"
-        f"- WRONG: Incomplete JSON - must complete all {num_cards} cards\n\n"
-        f"Output the complete, valid JSON now:"
-    )
-
-
-def build_short_answer_prompt(
-    topic: str,
-    difficulty: str,
-    num_questions: int,
-    snippets: list[str]
-) -> str:
-    """
-    Build a prompt for generating short answer questions with sample answers and grading rubrics.
-    """
-    context_str = "\n\n".join(f"[Chunk {i+1}]\n{s}" for i, s in enumerate(snippets))
-    
-    return (
-        f"You are an expert educational content creator specializing in creating short answer questions.\n\n"
-        f"Topic: {topic}\n"
-        f"Difficulty: {difficulty}\n"
-        f"Number of questions: {num_questions}\n\n"
-        f"Context from textbook:\n{context_str}\n\n"
-        f"CRITICAL JSON FORMATTING RULES:\n"
-        f'- Use double quotes for all strings, property names, and array items\n'
-        f'- Do NOT use trailing commas (no comma after last item in array or object)\n'
-        f'- Array items: ["item1", "item2", "item3"]  <- comma between, not after last\n'
-        f'- Object properties: {{"key1": "val1", "key2": "val2"}}  <- comma between, not after last\n\n'
-        f"Required JSON structure:\n"
-        f"{{\n"
-        f'  "title": "Short Answer: {topic}",\n'
-        f'  "questions": [\n'
-        f"    {{\n"
-        f'      "id": "q1",\n'
-        f'      "questionText": "Clear, specific question requiring detailed explanation",\n'
-        f'      "context": "Optional background information or scenario (can be empty string)",\n'
-        f'      "sampleAnswer": "Comprehensive answer (100-150 words) that fully addresses the question with accurate details from the textbook",\n'
-        f'      "keyPoints": ["Key concept 1", "Key concept 2", "Key concept 3", "Key concept 4", "Key concept 5"],\n'
-        f'      "rubric": "Clear grading criteria explaining what a complete answer should include",\n'
-        f'      "expectedLength": 100\n'
-        f"    }}\n"
-        f"  ]\n"
-        f"}}\n\n"
-        f"Content requirements:\n"
-        f"- questionText: Ask open-ended questions requiring explanation, analysis, or comparison\n"
-        f"- context: Provide relevant background only if needed (use empty string \"\" if not)\n"
-        f"- sampleAnswer: Write thorough, accurate answers (100-150 words) based on textbook content\n"
-        f"- keyPoints: List 3-5 essential concepts that should be included in the answer\n"
-        f"- rubric: Explain how to evaluate answer quality and what earns full credit\n"
-        f"- expectedLength: Set to 100 for most questions\n"
-        f"- Base all content on the provided textbook context\n"
-        f"- Questions should be progressively more challenging based on difficulty level\n"
-        f"- For beginner: Focus on definitions and basic concepts\n"
-        f"- For intermediate: Require explanation of processes and relationships\n"
-        f"- For advanced: Demand analysis, evaluation, or synthesis\n\n"
-        f"Common mistakes to avoid:\n"
-        f"- WRONG: Trailing comma before closing bracket: [item1, item2,]\n"
-        f"- WRONG: Missing comma between items: [item1 item2]\n"
-        f"- WRONG: Comma after last property: {{\"key\": \"value\",}}\n"
-        f"- WRONG: Unescaped quotes in strings - use \\\" inside strings\n"
-        f"- WRONG: Extra text before or after the JSON\n"
-        f"- WRONG: Incomplete JSON - must complete all {num_questions} questions\n"
-        f"- WRONG: Sample answers that are too short or vague\n\n"
-        f"Output the complete, valid JSON now:"
-    )
 
 
 def extract_sources_from_docs(docs) -> list[str]:
@@ -535,155 +402,7 @@ def extract_json(text: str) -> Dict[str, Any]:
     return json.loads(text[s : e + 1])
 
 
-def validate_shape(obj: Dict[str, Any], num_questions: int, num_options: int) -> Dict[str, Any]:
-    if not isinstance(obj, dict):
-        raise ValueError("Invalid root JSON")
-    if not isinstance(obj.get("title"), str) or not obj["title"].strip():
-        raise ValueError("Invalid title")
-    qs = obj.get("questions")
-    if not isinstance(qs, list) or len(qs) != num_questions:
-        raise ValueError(f"questions must have exactly {num_questions} items")
-    valid_ids = {chr(97 + i) for i in range(num_options)}
-    for idx, q in enumerate(qs):
-        if not isinstance(q, dict):
-            raise ValueError(f"Question[{idx}] invalid")
-        if not isinstance(q.get("id"), str) or not q["id"].strip():
-            raise ValueError(f"Question[{idx}].id invalid")
-        if not isinstance(q.get("questionText"), str) or not q["questionText"].strip():
-            raise ValueError(f"Question[{idx}].questionText invalid")
-        opts = q.get("options")
-        if not isinstance(opts, list) or len(opts) != num_options:
-            raise ValueError(f"Question[{idx}].options must have exactly {num_options} items")
-        for oi, opt in enumerate(opts):
-            if not isinstance(opt, dict):
-                raise ValueError(f"Question[{idx}].options[{oi}] invalid")
-            if opt.get("id") not in valid_ids:
-                raise ValueError(f"Question[{idx}].options[{oi}].id invalid")
-            if not isinstance(opt.get("text"), str) or not opt["text"].strip():
-                raise ValueError(f"Question[{idx}].options[{oi}].text invalid")
-            if not isinstance(opt.get("explanation"), str) or not opt["explanation"].strip():
-                raise ValueError(f"Question[{idx}].options[{oi}].explanation invalid")
-        if q.get("correctAnswer") not in valid_ids:
-            raise ValueError(f"Question[{idx}].correctAnswer invalid")
-    return obj
 
-
-def validate_flashcard_shape(obj: Dict[str, Any], num_cards: int) -> Dict[str, Any]:
-    if not isinstance(obj, dict):
-        raise ValueError("Invalid root JSON")
-    if not isinstance(obj.get("title"), str) or not obj["title"].strip():
-        raise ValueError("Invalid title")
-    cards = obj.get("cards")
-    if not isinstance(cards, list) or len(cards) != num_cards:
-        raise ValueError(f"cards must have exactly {num_cards} items")
-    for idx, card in enumerate(cards):
-        if not isinstance(card, dict):
-            raise ValueError(f"Card[{idx}] invalid")
-        if not isinstance(card.get("id"), str) or not card["id"].strip():
-            raise ValueError(f"Card[{idx}].id invalid")
-        if not isinstance(card.get("front"), str) or not card["front"].strip():
-            raise ValueError(f"Card[{idx}].front invalid")
-        if not isinstance(card.get("back"), str) or not card["back"].strip():
-            raise ValueError(f"Card[{idx}].back invalid")
-        if not isinstance(card.get("hint"), str):
-            raise ValueError(f"Card[{idx}].hint must be a string (can be empty)")
-    return obj
-
-
-def validate_short_answer_shape(obj: Dict[str, Any], num_questions: int) -> Dict[str, Any]:
-    """
-    Validate the shape of a short answer JSON object.
-    """
-    if not isinstance(obj, dict):
-        raise ValueError("Invalid root JSON")
-    if not isinstance(obj.get("title"), str) or not obj["title"].strip():
-        raise ValueError("Invalid title")
-    
-    questions = obj.get("questions")
-    if not isinstance(questions, list) or len(questions) != num_questions:
-        raise ValueError(f"questions must have exactly {num_questions} items")
-    
-    for idx, q in enumerate(questions):
-        if not isinstance(q, dict):
-            raise ValueError(f"Question[{idx}] invalid")
-        
-        # Validate id
-        if not isinstance(q.get("id"), str) or not q["id"].strip():
-            raise ValueError(f"Question[{idx}].id invalid")
-        
-        # Validate questionText
-        if not isinstance(q.get("questionText"), str) or not q["questionText"].strip():
-            raise ValueError(f"Question[{idx}].questionText invalid")
-        
-        # Validate context (optional, can be empty string)
-        if not isinstance(q.get("context"), str):
-            raise ValueError(f"Question[{idx}].context must be a string (can be empty)")
-        
-        # Validate sampleAnswer
-        if not isinstance(q.get("sampleAnswer"), str) or not q["sampleAnswer"].strip():
-            raise ValueError(f"Question[{idx}].sampleAnswer invalid")
-        
-        # Validate keyPoints (array of strings)
-        key_points = q.get("keyPoints")
-        if not isinstance(key_points, list) or len(key_points) < 3:
-            raise ValueError(f"Question[{idx}].keyPoints must be an array with at least 3 items")
-        for kp_idx, kp in enumerate(key_points):
-            if not isinstance(kp, str) or not kp.strip():
-                raise ValueError(f"Question[{idx}].keyPoints[{kp_idx}] must be a non-empty string")
-        
-        # Validate rubric
-        if not isinstance(q.get("rubric"), str) or not q["rubric"].strip():
-            raise ValueError(f"Question[{idx}].rubric invalid")
-        
-        # Validate expectedLength (optional number)
-        expected_length = q.get("expectedLength")
-        if expected_length is not None and not isinstance(expected_length, (int, float)):
-            raise ValueError(f"Question[{idx}].expectedLength must be a number")
-    
-    return obj
-
-
-def build_grading_prompt(
-    question: str,
-    student_answer: str,
-    sample_answer: str,
-    key_points: list[str],
-    rubric: str
-) -> str:
-    """
-    Build a prompt for the LLM to grade a student's short answer response.
-    """
-    key_points_str = "\n".join(f"{i+1}. {kp}" for i, kp in enumerate(key_points))
-    
-    return (
-        f"You are an expert educational assessor providing constructive feedback on student answers.\n\n"
-        f"Question:\n{question}\n\n"
-        f"Student's Answer:\n{student_answer}\n\n"
-        f"Sample Answer (for reference):\n{sample_answer}\n\n"
-        f"Key Points to Cover:\n{key_points_str}\n\n"
-        f"Grading Rubric:\n{rubric}\n\n"
-        f"CRITICAL JSON FORMATTING RULES:\n"
-        f'- Use double quotes for all strings and property names\n'
-        f'- Do NOT use trailing commas\n'
-        f'- Escape quotes within strings using \\"\n\n'
-        f"Required JSON structure:\n"
-        f"{{\n"
-        f'  "feedback": "Overall qualitative assessment of the answer (2-3 sentences)",\n'
-        f'  "strengths": ["Strength 1", "Strength 2"],\n'
-        f'  "improvements": ["Improvement suggestion 1", "Improvement suggestion 2"],\n'
-        f'  "keyPointsCovered": ["Key point covered 1", "Key point covered 2"],\n'
-        f'  "keyPointsMissed": ["Key point missed 1"]\n'
-        f"}}\n\n"
-        f"Instructions:\n"
-        f"- Provide constructive, encouraging feedback\n"
-        f"- Identify 2-3 specific strengths in the student's answer\n"
-        f"- Suggest 2-3 concrete ways to improve the answer\n"
-        f"- List which key points were adequately covered\n"
-        f"- List which key points were missing or insufficiently addressed\n"
-        f"- Be specific and educational, not just critical\n"
-        f"- Arrays can be empty if no items apply\n\n"
-        f"Output the complete, valid JSON now:"
-    )
 
 
 def handler(event, context):
@@ -700,6 +419,15 @@ def handler(event, context):
         return resp
 
     logger.info("PracticeMaterial Lambda (Docker) invoked")
+
+    # Initialize constants (models, guardrails) if not already loaded
+    # This checks global variables, so it's fast if already initialized (e.g. by Provisioned Concurrency)
+    try:
+        initialize_constants()
+    except Exception as e:
+        logger.error(f"Failed to initialize constants: {e}")
+        # Proceeding might fail later, but we log it.
+        # Guardrails will be skipped if ID is missing (fail-open currently for config missing, but apply_guardrails handles None)
 
     # Handle warmup requests - return immediately after initialization
     if event.get("warmup") or event.get("httpMethod") == "HEAD":
@@ -814,11 +542,16 @@ def handler(event, context):
         # Stage 3: Build retriever
         send_progress("retrieving", 15)
         logger.info(f"Building retriever for textbook {textbook_id}...")
+        
+        # Get connection pool for database operations
+        pool = get_connection_pool()
+        
         retriever = get_textbook_retriever(
             llm=None,
             textbook_id=textbook_id,
             vectorstore_config_dict=vectorstore_config,
             embeddings=_embeddings,
+            connection_pool=pool,
         )
         logger.info("Retriever built successfully")
         send_progress("retrieving", 20)
@@ -847,7 +580,7 @@ def handler(event, context):
         send_progress("generating", 35)
         logger.info(f"Building prompt for {material_type}...")
         if material_type == "mcq":
-            prompt = build_prompt(topic, difficulty, num_questions, num_options, snippets)
+            prompt = build_mcq_prompt(topic, difficulty, num_questions, num_options, snippets)
         elif material_type == "flashcard":
             prompt = build_flashcard_prompt(topic, difficulty, num_cards, card_type, snippets)
         else:  # short_answer
@@ -869,7 +602,7 @@ def handler(event, context):
         logger.info("Parsing and validating LLM response...")
         try:
             if material_type == "mcq":
-                result = validate_shape(extract_json(output_text), num_questions, num_options)
+                result = validate_mcq_shape(extract_json(output_text), num_questions, num_options)
             elif material_type == "flashcard":
                 result = validate_flashcard_shape(extract_json(output_text), num_cards)
             else:  # short_answer
@@ -888,7 +621,7 @@ def handler(event, context):
             
             try:
                 if material_type == "mcq":
-                    result = validate_shape(extract_json(output_text2), num_questions, num_options)
+                    result = validate_mcq_shape(extract_json(output_text2), num_questions, num_options)
                 elif material_type == "flashcard":
                     result = validate_flashcard_shape(extract_json(output_text2), num_cards)
                 else:  # short_answer
@@ -1108,12 +841,16 @@ def handle_grading(event, context):
     except Exception as e:
         logger.exception("Error grading answer")
         return {
-            "statusCode": 500,
-            "headers": {
-                "Content-Type": "application/json",
-                "Access-Control-Allow-Headers": "*",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Methods": "*",
-            },
             "body": json.dumps({"error": f"Error grading answer: {str(e)}"}),
         }
+
+# Global initialization for Provisioned Concurrency
+# SSM parameters are pre-loaded at module import time (lines 48-73)
+# This block initializes LLM and embeddings when the container is created
+try:
+    logger.info("Starting global LLM/embeddings initialization")
+    initialize_constants()
+    logger.info("Global initialization complete")
+except Exception as e:
+    # Log error but don't fail import - handler will retry
+    logger.warning(f"Global initialization failed (will retry in handler): {e}")

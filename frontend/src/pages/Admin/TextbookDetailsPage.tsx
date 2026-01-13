@@ -51,6 +51,7 @@ type TextbookDetails = {
   image_count: number;
   video_count: number;
   audio_count: number;
+  source_url?: string;
 };
 
 type TimeSeriesData = {
@@ -667,11 +668,11 @@ export default function TextbookDetailsPage() {
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <MetricCard
-                        title="Active Users"
+                        title="Active User Sessions"
                         value={totalUsersPeriod.toString()}
                         icon={<Users className="h-5 w-5 text-blue-600" />}
                         trend="in selected period"
-                        tooltip="Number of unique users who have interacted with this textbook during the selected time range."
+                        tooltip="Number of  user sessions who have interacted with this textbook during the selected time range."
                       />
                       <MetricCard
                         title="Questions Asked"
@@ -1157,37 +1158,47 @@ export default function TextbookDetailsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <MetricCard
-                    title="Sections Ingested"
-                    value={`${ingestionStatus?.ingested_sections || 0}/${
-                      ingestionStatus?.total_sections || 0
-                    }`}
-                    icon={<CheckCircle2 className="h-5 w-5 text-green-600" />}
-                    trend={
-                      ingestionStatus?.ingested_sections ===
-                        ingestionStatus?.total_sections &&
-                      (ingestionStatus?.total_sections || 0) > 0
-                        ? "Fully Ingested"
-                        : "In Progress"
-                    }
-                    tooltip="Number of sections successfully processed and indexed out of the total sections found in the textbook."
-                  />
-                  <MetricCard
-                    title="Images Ingested"
-                    value={(ingestionStatus?.image_count || 0).toString()}
-                    icon={<FileVideo className="h-5 w-5 text-blue-600" />}
-                    trend="Total images found"
-                    tooltip="Total number of images extracted from the textbook content and indexed."
-                  />
+                  <div onClick={() => textbook?.source_url && window.open(textbook.source_url, "_blank")} className={textbook?.source_url ? "cursor-pointer" : ""}>
+                    <MetricCard
+                      title="Sections Ingested"
+                      value={`${ingestionStatus?.ingested_sections || 0}/${
+                        ingestionStatus?.total_sections || 0
+                      }`}
+                      icon={<CheckCircle2 className="h-5 w-5 text-green-600" />}
+                      trend={
+                        ingestionStatus?.ingested_sections ===
+                          ingestionStatus?.total_sections &&
+                        (ingestionStatus?.total_sections || 0) > 0
+                          ? "Fully Ingested"
+                          : "In Progress"
+                      }
+                      tooltip="Number of sections successfully processed and indexed out of the total sections found in the textbook. Click to view textbook source."
+                    />
+                  </div>
+                  <div 
+                    onClick={() => {
+                      const mediaSection = document.getElementById('associated-media-section');
+                      mediaSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }}
+                    className="cursor-pointer"
+                  >
+                    <MetricCard
+                      title="Images Ingested"
+                      value={(ingestionStatus?.image_count || 0).toString()}
+                      icon={<FileVideo className="h-5 w-5 text-blue-600" />}
+                      trend="Total images found"
+                      tooltip="Total number of images extracted from the textbook content and indexed. Click to view associated media."
+                    />
+                  </div>
                 </div>
                 {/* CloudWatch Logs Viewer */}
                 {id && <CloudWatchLogsViewer textbookId={id} />}
-                <div>
+                <div id="associated-media-section">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">
                     Associated Media (
                     {ingestionStatus?.media_items?.length || 0} items)
                   </h3>
-                  <div className="grid gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {ingestionStatus?.media_items &&
                     ingestionStatus.media_items.length > 0 ? (
                       ingestionStatus.media_items.map(
@@ -1245,6 +1256,7 @@ export default function TextbookDetailsPage() {
                         No media items found for this textbook.
                       </div>
                     )}
+
                   </div>
 
                   {/* Pagination Controls for Media */}

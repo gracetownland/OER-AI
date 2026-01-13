@@ -151,7 +151,7 @@ export default function PracticeMaterialPage() {
     <div className="w-full max-w-[1800px] px-4 py-4">
       <div className="min-h-screen flex flex-col md:flex-row md:items-start md:justify-center gap-6">
         <div className="w-full md:w-[30%]">
-          <GenerateForm onGenerate={handleGenerate} />
+          <GenerateForm onGenerate={handleGenerate} isProcessing={isProcessing} />
 
           {/* Progress Bar for WebSocket Streaming */}
           {isProcessing && (
@@ -182,7 +182,7 @@ export default function PracticeMaterialPage() {
             <Card>
               <CardDescription className="flex flex-col justify-center items-center p-6">
                 <p className="text-center text-muted-foreground">No practice materials have been generated for this session</p>
-                <p className="text-destructive text-center mt-2">Reminder: All Sessions are temporary and will not persist after exiting</p>
+                <p className="text-destructive text-center mt-2">Reminder: All Sessions are temporary and will not persist after exiting OR refreshing the page.</p>
               </CardDescription>
             </Card>
           ) : (

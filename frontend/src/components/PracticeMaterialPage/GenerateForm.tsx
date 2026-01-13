@@ -64,9 +64,10 @@ type FormData = z.infer<typeof formSchema>;
 
 interface GenerateFormProps {
   onGenerate: (formData: FormData) => void;
+  isProcessing?: boolean;
 }
 
-export function GenerateForm({ onGenerate }: GenerateFormProps) {
+export function GenerateForm({ onGenerate, isProcessing = false }: GenerateFormProps) {
   const [currentMaterialType, setCurrentMaterialType] = useState<"mcq" | "flashcards" | "shortAnswer">("mcq");
 
   const {
@@ -427,8 +428,8 @@ export function GenerateForm({ onGenerate }: GenerateFormProps) {
             </>
           )}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Generating..." : "Generate"}
+          <Button type="submit" className="w-full" disabled={isSubmitting || isProcessing}>
+            {isSubmitting || isProcessing ? "Generating..." : "Generate"}
           </Button>
         </form>
       </CardContent>
