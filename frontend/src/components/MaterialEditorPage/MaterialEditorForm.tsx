@@ -65,9 +65,10 @@ type FormData = z.infer<typeof formSchema>;
 
 interface MaterialEditorFormProps {
   onGenerate: (formData: FormData) => void;
+  isProcessing?: boolean;
 }
 
-export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
+export function MaterialEditorForm({ onGenerate, isProcessing = false }: MaterialEditorFormProps) {
   const [_currentMaterialType, setCurrentMaterialType] = useState<
     "mcq" | "shortAnswer" | "flashcards"
   >("mcq");
@@ -310,9 +311,9 @@ export function MaterialEditorForm({ onGenerate }: MaterialEditorFormProps) {
           <Button
             type="submit"
             className="cursor-pointer w-full"
-            disabled={isSubmitting}
+            disabled={isSubmitting || isProcessing}
           >
-            {isSubmitting ? "Generating..." : "Generate"}
+            {isSubmitting || isProcessing ? "Generating..." : "Generate"}
           </Button>
         </form>
       </CardContent>

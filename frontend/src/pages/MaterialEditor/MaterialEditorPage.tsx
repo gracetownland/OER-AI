@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { MCQEditableContainer } from "@/components/MaterialEditorPage/MCQEditableContainer";
 import { EssayEditableContainer } from "@/components/MaterialEditorPage/EssayEditableContainer";
 import { FlashcardEditableContainer } from "@/components/MaterialEditorPage/FlashcardEditableContainer";
@@ -16,6 +16,19 @@ import {
 import { Card, CardDescription } from "@/components/ui/card";
 import { MaterialEditorForm } from "@/components/MaterialEditorPage/MaterialEditorForm";
 import { useTextbookView } from "@/providers/textbookView";
+import { usePracticeMaterialStream } from "@/hooks/usePracticeMaterialStream";
+import { Progress } from "@/components/ui/progress";
+
+// Status display mapping
+const STATUS_LABELS: Record<string, string> = {
+  idle: "",
+  initializing: "Initializing models...",
+  retrieving: "Retrieving relevant content...",
+  generating: "Generating practice material...",
+  validating: "Validating response...",
+  complete: "Complete!",
+  error: "Error occurred",
+};
 
 export default function MaterialEditorPage() {
   const [mcqQuestionSets, setMcqQuestionSets] = useState<
@@ -25,9 +38,77 @@ export default function MaterialEditorPage() {
     I5HPEssayQuestion[][]
   >([]);
   const [flashcardSets, setFlashcardSets] = useState<IH5PFlashcard[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const { textbook } = useTextbookView();
+
+  // WebSocket authentication token
+  const [wsToken, setWsToken] = useState<string | null>(null);
+
+  // Fetch authentication token on mount
+  useEffect(() => {
+    const apiEndpoint = import.meta.env.VITE_API_ENDPOINT;
+    if (!apiEndpoint) return;
+
+    let isActive = true;
+    let refreshTimeoutId: number | undefined;
+    const refreshDelayMs = 14 * 60 * 1000; // Refresh before 15 min expiry
+
+    async function fetchToken() {
+      if (!isActive) return;
+
+      try {
+        const response = await fetch(`${apiEndpoint}/user/publicToken`);
+        if (!response.ok) throw new Error("Token request failed");
+
+        const { token } = await response.json();
+        if (!isActive) return;
+
+        setWsToken(token);
+        if (isActive) {
+          refreshTimeoutId = window.setTimeout(fetchToken, refreshDelayMs);
+        }
+      } catch (error) {
+        console.error("[MaterialEditor] Failed to fetch token:", error);
+        if (!isActive) return;
+
+        setWsToken(null);
+        if (isActive) {
+          refreshTimeoutId = window.setTimeout(fetchToken, 30000);
+        }
+      }
+    }
+
+    fetchToken();
+
+    return () => {
+      isActive = false;
+      if (refreshTimeoutId) window.clearTimeout(refreshTimeoutId);
+    };
+  }, []);
+
+  // Build authenticated WebSocket URL
+  const baseWsUrl = import.meta.env.VITE_WEBSOCKET_URL;
+  const wsUrl = useMemo(() => {
+    if (!baseWsUrl || !wsToken) return null;
+
+    try {
+      const url = new URL(baseWsUrl);
+      url.searchParams.set("token", wsToken);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }, [baseWsUrl, wsToken]);
+
+  // Use the streaming hook with authenticated URL
+  const {
+    generate,
+    status,
+    progress,
+    result,
+    error: streamError,
+    isConnected,
+  } = usePracticeMaterialStream(wsUrl);
 
   const handleQuizDelete = (index: number) => {
     const newQuestionSets = mcqQuestionSets.filter((_, i) => i !== index);
@@ -55,59 +136,32 @@ export default function MaterialEditorPage() {
       return;
     }
 
-    try {
-      setIsGenerating(true);
+    // Map form data to streaming hook params
+    const materialType = formData.materialType === "flashcards"
+      ? "flashcard"
+      : formData.materialType === "shortAnswer"
+        ? "short_answer"
+        : "mcq";
 
-      // Get public token
-      const tokenResp = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-      );
-      if (!tokenResp.ok) throw new Error("Failed to get public token");
-      const { token } = await tokenResp.json();
+    generate({
+      textbook_id: textbook.id,
+      topic: formData.topic,
+      material_type: materialType,
+      difficulty: formData.difficulty,
+      num_questions: formData.numQuestions,
+      num_options: formData.numOptions,
+      num_cards: formData.numCards,
+      card_type: formData.cardType,
+    });
+  };
 
-      // Build request body based on material type
-      let requestBody: any = {
-        topic: formData.topic,
-        difficulty: formData.difficulty,
-      };
-
-      if (formData.materialType === "flashcards") {
-        requestBody.material_type = "flashcard";
-        requestBody.num_cards = formData.numCards;
-        requestBody.card_type = formData.cardType;
-      } else if (formData.materialType === "shortAnswer") {
-        requestBody.material_type = "short_answer";
-        requestBody.num_questions = formData.numQuestions;
-      } else {
-        requestBody.material_type = "mcq";
-        requestBody.num_questions = formData.numQuestions;
-        requestBody.num_options = formData.numOptions;
-      }
-
-      // Call practice materials API
-      const resp = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${
-          textbook.id
-        }/practice_materials`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(requestBody),
-        }
-      );
-
-      if (!resp.ok) {
-        const text = await resp.text();
-        throw new Error(text || "Failed to generate practice materials");
-      }
-
-      const data = await resp.json();
-
-      // Convert based on material type
-      if (formData.materialType === "flashcards" && data.cards) {
+  // Handle successful result from WebSocket streaming
+  useEffect(() => {
+    if (status === "complete" && result) {
+      const data = result as any;
+      
+      // Determine material type from result
+      if (data.cards) {
         // Convert flashcards to H5P format
         const h5pFlashcard: IH5PFlashcard = {
           library: "H5P.Flashcards 1.5",
@@ -115,15 +169,14 @@ export default function MaterialEditorPage() {
             cards: data.cards.map((card: any) => ({
               text: card.front || card.text || "",
               answer: card.back || card.answer || "",
-              tip: card.tip || "",
+              tip: card.hint || card.tip || "",
             })),
-            description: formData.topic || "Flashcard Set",
+            description: data.title || "Flashcard Set",
           },
         };
-
         setFlashcardSets((prev) => [h5pFlashcard, ...prev]);
-      } else if (formData.materialType === "shortAnswer" && data.questions) {
-        // Convert short answer to H5P Essay format
+      } else if (data.questions && data.questions[0]?.sampleAnswer) {
+        // Short answer questions
         const h5pQuestions: I5HPEssayQuestion[] = data.questions.map(
           (q: any) => ({
             library: "H5P.Essay 1.5",
@@ -147,10 +200,9 @@ export default function MaterialEditorPage() {
             },
           })
         );
-
         setEssayQuestionSets((prev) => [h5pQuestions, ...prev]);
       } else if (data.questions) {
-        // Convert MCQ to H5P format
+        // MCQ questions
         const h5pQuestions: I5HPMultiChoiceQuestion[] = data.questions.map(
           (q: any) => ({
             library: "H5P.MultiChoice 1.17",
@@ -168,17 +220,17 @@ export default function MaterialEditorPage() {
             },
           })
         );
-
         setMcqQuestionSets((prev) => [h5pQuestions, ...prev]);
       }
-    } catch (e) {
-      const err = e as Error;
-      console.error("Error generating practice material:", err);
-      setErrorMsg(err.message || "Unknown error generating practice materials");
-    } finally {
-      setIsGenerating(false);
     }
-  };
+  }, [status, result]);
+
+  // Handle errors from streaming
+  useEffect(() => {
+    if (streamError) {
+      setErrorMsg(streamError);
+    }
+  }, [streamError]);
 
   const handleExportToH5P = (questions: IH5PQuestion[]) => {
     // Determine question type and handle accordingly
@@ -205,16 +257,34 @@ export default function MaterialEditorPage() {
     }
   };
 
+  // Get status label
+  const statusLabel = STATUS_LABELS[status] || "";
+  const isProcessing = status !== "idle" && status !== "complete" && status !== "error";
+
   return (
     <div className="w-full max-w-[1800px] px-4 py-4">
       <div className="min-h-screen flex flex-col md:flex-row md:items-start md:justify-center gap-6">
         <div className="w-full md:w-[30%]">
-          <MaterialEditorForm onGenerate={handleGenerate} />
-          {isGenerating && (
-            <p className="text-sm text-muted-foreground mt-2">
-              Generating practice materials...
+          <MaterialEditorForm onGenerate={handleGenerate} isProcessing={isProcessing} />
+
+          {/* Progress Bar for WebSocket Streaming */}
+          {isProcessing && (
+            <div className="mt-4 space-y-2">
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>{statusLabel}</span>
+                <span>{progress}%</span>
+              </div>
+              <Progress value={progress} className="h-2" />
+            </div>
+          )}
+
+          {/* Connection warning */}
+          {!isConnected && !isProcessing && (
+            <p className="text-sm text-amber-600 mt-2">
+              ⚠️ Connecting to server... Please wait.
             </p>
           )}
+
           {errorMsg && (
             <p className="text-sm text-destructive mt-2">{errorMsg}</p>
           )}

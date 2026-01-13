@@ -1,5 +1,8 @@
 const { ECRClient, DescribeImagesCommand } = require("@aws-sdk/client-ecr");
-const { CodeBuildClient, StartBuildCommand } = require("@aws-sdk/client-codebuild");
+const {
+  CodeBuildClient,
+  StartBuildCommand,
+} = require("@aws-sdk/client-codebuild");
 
 const ecr = new ECRClient({});
 const codebuild = new CodeBuildClient({});
@@ -146,7 +149,7 @@ exports.handler = async (event, context) => {
       physicalId
     );
   } catch (error) {
-    console.error("Error:", error);
+    // Error occurred - send failure response to CloudFormation
     await sendResponse(
       event,
       context,
@@ -213,7 +216,7 @@ async function sendResponse(
     });
 
     request.on("error", (error) => {
-      console.error("Error sending response:", error);
+      // Failed to send response to CloudFormation
       reject(error);
     });
 
