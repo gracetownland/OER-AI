@@ -512,6 +512,7 @@ def handler(event, context):
     force_fresh = body.get("force_fresh", False)
     if isinstance(force_fresh, str):
         force_fresh = force_fresh.lower() == "true"
+    logger.info(f"force_fresh parameter: {force_fresh} (raw: {body.get('force_fresh', 'NOT_PRESENT')})")
 
     # Generate cache key based on request parameters
     num_items = num_cards if material_type == "flashcard" else num_questions
