@@ -154,17 +154,6 @@ export default function PracticeMaterialPage() {
         <div className="w-full md:w-[30%]">
           <GenerateForm onGenerate={handleGenerate} isProcessing={isProcessing} />
 
-          {/* Progress Bar for WebSocket Streaming */}
-          {isProcessing && (
-            <div className="mt-4 space-y-2">
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>{statusLabel}</span>
-                <span>{progress}%</span>
-              </div>
-              <Progress value={progress} className="h-2" />
-            </div>
-          )}
-
           {/* Connection warning */}
           {!isConnected && !isProcessing && (
             <p className="text-sm text-amber-600 mt-2">
@@ -179,7 +168,21 @@ export default function PracticeMaterialPage() {
 
         <div className="w-full md:w-[70%] space-y-6">
           <h2 className="text-2xl font-semibold">Practice Materials</h2>
-          {materials.length === 0 ? (
+          {/* Show progress bar when generating, hide empty state message */}
+          {isProcessing ? (
+            <Card>
+              <div className="p-6 space-y-4">
+                <div className="flex justify-between text-sm text-muted-foreground">
+                  <span>{statusLabel}</span>
+                  <span>{progress}%</span>
+                </div>
+                <Progress value={progress} className="h-3" />
+                <p className="text-center text-sm text-muted-foreground">
+                  Generating practice materials...
+                </p>
+              </div>
+            </Card>
+          ) : materials.length === 0 ? (
             <Card>
               <CardDescription className="flex flex-col justify-center items-center p-6">
                 <p className="text-center text-muted-foreground">No practice materials have been generated for this session</p>

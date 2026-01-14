@@ -63,8 +63,11 @@ const formSchema = z.discriminatedUnion("materialType", [mcqSchema, flashcardSch
 
 type FormData = z.infer<typeof formSchema>;
 
+// Extended type for form submission that includes forceFresh
+type FormDataWithForceFresh = FormData & { forceFresh: boolean };
+
 interface GenerateFormProps {
-  onGenerate: (formData: FormData) => void;
+  onGenerate: (formData: FormDataWithForceFresh) => void;
   isProcessing?: boolean;
 }
 
@@ -193,12 +196,20 @@ export function GenerateForm({ onGenerate, isProcessing = false }: GenerateFormP
               name="topic"
               control={control}
               render={({ field }) => (
-                <Input
-                  {...field}
-                  id="topic"
-                  placeholder="Describe a topic"
-                  className={errors.topic ? "border-red-500" : ""}
-                />
+                <>
+                  <Input
+                    {...field}
+                    id="topic"
+                    placeholder="Describe a topic"
+                    maxLength={200}
+                    className={errors.topic ? "border-red-500" : ""}
+                  />
+                  {field.value && field.value.length >= 150 && (
+                    <p className={`text-xs ${field.value.length >= 200 ? "text-red-500" : "text-muted-foreground"}`}>
+                      {field.value.length}/200 characters
+                    </p>
+                  )}
+                </>
               )}
             />
             {errors.topic && (

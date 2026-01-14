@@ -253,17 +253,19 @@ export function AiChatInput({
         <Send className="h-4 w-4" />
       </Button>
 
-      {/* Character counter */}
-      <div
-        className={cn(
-          "absolute bottom-1 left-3 text-xs transition-colors",
-          value.length > 950
-            ? "text-destructive font-medium"
-            : "text-muted-foreground"
-        )}
-      >
-        {value.length}/1000
-      </div>
+      {/* Character counter - only shown when approaching limit */}
+      {value.length >= 850 && (
+        <div
+          className={cn(
+            "text-xs mt-1 text-right transition-colors",
+            value.length >= 1000
+              ? "text-destructive font-medium"
+              : "text-muted-foreground"
+          )}
+        >
+          {value.length}/1000 characters
+        </div>
+      )}
     </div>
   );
 }
