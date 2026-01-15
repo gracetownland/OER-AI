@@ -258,7 +258,7 @@ export function AiChatInput({
         <div
           className={cn(
             "text-xs mt-1 text-right transition-colors",
-            value.length >= 1000
+            value.length > 950
               ? "text-destructive font-medium"
               : "text-muted-foreground"
           )}

@@ -233,15 +233,28 @@ def clear_cache() -> None:
         return
     
     try:
-        # Scan and delete all items (expensive operation)
-        scan = table.scan(ProjectionExpression="cache_key")
-        items = scan.get("Items", [])
+        total_deleted = 0
         
-        with table.batch_writer() as batch:
-            for item in items:
-                batch.delete_item(Key={"cache_key": item["cache_key"]})
+        # Scan with pagination - DynamoDB returns max 1MB per scan
+        scan_kwargs = {"ProjectionExpression": "cache_key"}
         
-        logger.info(f"Cache cleared: {len(items)} items deleted")
+        while True:
+            scan = table.scan(**scan_kwargs)
+            items = scan.get("Items", [])
+            
+            with table.batch_writer() as batch:
+                for item in items:
+                    batch.delete_item(Key={"cache_key": item["cache_key"]})
+            
+            total_deleted += len(items)
+            
+            # Check if there are more items to scan
+            if "LastEvaluatedKey" in scan:
+                scan_kwargs["ExclusiveStartKey"] = scan["LastEvaluatedKey"]
+            else:
+                break
+        
+        logger.info(f"Cache cleared: {total_deleted} items deleted")
         
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")

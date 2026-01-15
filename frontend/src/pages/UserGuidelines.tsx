@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import DOMPurify from "dompurify";
 import HomePageHeader from "@/components/HomePageHeader";
 import Footer from "@/components/Footer";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,7 +106,11 @@ export default function UserGuidelines() {
     fetchGuidelines();
   }, []);
 
-  const renderedContent = simpleMarkdownToHtml(guidelines);
+  // Convert markdown to HTML and sanitize to prevent XSS
+  const renderedContent = DOMPurify.sanitize(simpleMarkdownToHtml(guidelines), {
+    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'p', 'br', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'div'],
+    ALLOWED_ATTR: ['href', 'class', 'target', 'rel'],
+  });
 
   return (
     <div className="pt-[70px] flex min-h-screen flex-col bg-background">
