@@ -36,6 +36,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { AuthService } from "@/functions/authService";
 import MetricCard from "@/components/Admin/MetricCard";
 import CloudWatchLogsViewer from "@/components/Admin/CloudWatchLogsViewer";
@@ -188,7 +189,7 @@ export default function TextbookDetailsPage() {
   const [sharedPrompts, setSharedPrompts] = useState<SharedPrompt[]>([]);
   const [ingestionStatus, setIngestionStatus] =
     useState<IngestionStatus | null>(null);
-  const [timeRange, setTimeRange] = useState("3m");
+  const [timeRange, setTimeRange] = useState("90d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -632,31 +633,28 @@ export default function TextbookDetailsPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center bg-white rounded-lg border border-gray-200 p-1 shadow-sm">
-                    <Button
-                      variant={timeRange === "3m" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setTimeRange("3m")}
-                      className="text-xs h-8"
-                    >
-                      3M
-                    </Button>
-                    <Button
-                      variant={timeRange === "30d" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setTimeRange("30d")}
-                      className="text-xs h-8"
-                    >
-                      30D
-                    </Button>
-                    <Button
-                      variant={timeRange === "7d" ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setTimeRange("7d")}
-                      className="text-xs h-8"
-                    >
-                      7D
-                    </Button>
+                  <div className="flex items-center bg-white rounded-lg border border-gray-200 p-1 px-3 shadow-sm gap-2">
+                    <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                      Last
+                    </span>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={365}
+                      className="h-8 w-20 text-center"
+                      defaultValue={90}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value);
+                        if (!isNaN(val) && val > 0) {
+                          // Cap at 365, min 1
+                          const days = Math.min(Math.max(1, val), 365);
+                          setTimeRange(`${days}d`);
+                        }
+                      }}
+                    />
+                    <span className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                      Days
+                    </span>
                   </div>
                 </div>
 
