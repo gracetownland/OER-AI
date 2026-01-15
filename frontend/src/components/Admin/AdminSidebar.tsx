@@ -83,7 +83,7 @@ export default function AdminSidebar({
           onClick={() => onViewChange("ai-settings")}
         >
           <Bot className="mr-2 h-4 w-4" />
-          AI Settings
+          Platform Config
         </Button>
         <Button
           variant={activeView === "faqs-prompts" ? "secondary" : "ghost"}

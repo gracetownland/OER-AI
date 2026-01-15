@@ -280,7 +280,7 @@ exports.handler = async (event) => {
         response.statusCode = 200;
         response.body = JSON.stringify({
           textbook_id: mediaTextbookId,
-          media_items: mediaItems.map(item => ({
+          media_items: mediaItems.map((item) => ({
             id: item.id,
             type: item.type,
             url: item.url,
@@ -323,7 +323,7 @@ exports.handler = async (event) => {
         response.statusCode = 200;
         response.body = JSON.stringify({
           textbook_id: sectionsTextbookId,
-          sections: sections.map(section => ({
+          sections: sections.map((section) => ({
             id: section.id,
             parent_section_id: section.parent_section_id,
             title: section.title,
@@ -1493,41 +1493,48 @@ exports.handler = async (event) => {
       // GET /admin/analytics - Get analytics data
       case "GET /admin/analytics":
         let startDate, endDate;
-        
+
         // Support custom date ranges
-        if (event.queryStringParameters?.startDate && event.queryStringParameters?.endDate) {
+        if (
+          event.queryStringParameters?.startDate &&
+          event.queryStringParameters?.endDate
+        ) {
           // Use custom date range
           startDate = new Date(event.queryStringParameters.startDate);
           endDate = new Date(event.queryStringParameters.endDate);
-          
+
           // Validate dates
           if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
             response.statusCode = 400;
-            response.body = JSON.stringify({ 
-              error: "Invalid date format. Use ISO 8601 format (YYYY-MM-DD)" 
+            response.body = JSON.stringify({
+              error: "Invalid date format. Use ISO 8601 format (YYYY-MM-DD)",
             });
             break;
           }
-          
+
           if (endDate < startDate) {
             response.statusCode = 400;
-            response.body = JSON.stringify({ 
-              error: "End date must be after start date" 
+            response.body = JSON.stringify({
+              error: "End date must be after start date",
             });
             break;
           }
-          
+
           // Validate max 1 year range
-          const daysDiff = Math.ceil((endDate - startDate) / (1000 * 60 * 60 * 24));
+          const daysDiff = Math.ceil(
+            (endDate - startDate) / (1000 * 60 * 60 * 24)
+          );
           if (daysDiff > 365) {
             response.statusCode = 400;
-            response.body = JSON.stringify({ 
-              error: "Date range cannot exceed 1 year (365 days)" 
+            response.body = JSON.stringify({
+              error: "Date range cannot exceed 1 year (365 days)",
             });
             break;
           }
-          
-          console.log(`Using custom date range: ${startDate.toISOString()} to ${endDate.toISOString()}`);
+
+          console.log(
+            `Using custom date range: ${startDate.toISOString()} to ${endDate.toISOString()}`
+          );
         } else {
           // Use preset timeRange
           const timeRange = event.queryStringParameters?.timeRange || "3m";
@@ -1550,12 +1557,14 @@ exports.handler = async (event) => {
 
           // Cap at 365 days and ensure at least 1 day
           daysBack = Math.min(Math.max(1, daysBack), 365);
-          
+
           endDate = new Date();
           startDate = new Date();
           startDate.setDate(startDate.getDate() - daysBack);
-          
-          console.log(`Using preset time range: ${timeRange} (${daysBack} days)`);
+
+          console.log(
+            `Using preset time range: ${timeRange} (${daysBack} days)`
+          );
         }
 
         // Get time series data for users and questions
@@ -1749,6 +1758,71 @@ exports.handler = async (event) => {
           response.statusCode = 500;
           response.body = JSON.stringify({
             error: "Failed to update system prompt",
+          });
+        }
+        break;
+
+      // GET /admin/settings/user-guidelines - Get user guidelines
+      case "GET /admin/settings/user-guidelines":
+        try {
+          const guidelinesResult = await sqlConnection`
+            SELECT value FROM system_settings WHERE key = 'user_guidelines'
+          `;
+
+          const userGuidelines =
+            guidelinesResult.length > 0 ? guidelinesResult[0].value : "";
+
+          response.statusCode = 200;
+          response.body = JSON.stringify({
+            userGuidelines: userGuidelines,
+          });
+        } catch (error) {
+          console.error("Error getting user guidelines:", error);
+          response.statusCode = 500;
+          response.body = JSON.stringify({
+            error: "Failed to get user guidelines",
+          });
+        }
+        break;
+
+      // PUT /admin/settings/user-guidelines - Update user guidelines
+      case "PUT /admin/settings/user-guidelines":
+        let guidelinesData;
+        try {
+          guidelinesData = parseBody(event.body);
+        } catch (error) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({ error: error.message });
+          break;
+        }
+
+        const { userGuidelines } = guidelinesData;
+
+        if (userGuidelines === undefined || userGuidelines === null) {
+          response.statusCode = 400;
+          response.body = JSON.stringify({
+            error: "userGuidelines is required",
+          });
+          break;
+        }
+
+        try {
+          await sqlConnection`
+            INSERT INTO system_settings (key, value, updated_at)
+            VALUES ('user_guidelines', ${userGuidelines}, NOW())
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+          `;
+
+          response.statusCode = 200;
+          response.body = JSON.stringify({
+            message: "User guidelines updated successfully",
+            userGuidelines: String(userGuidelines),
+          });
+        } catch (error) {
+          console.error("Error updating user guidelines:", error);
+          response.statusCode = 500;
+          response.body = JSON.stringify({
+            error: "Failed to update user guidelines",
           });
         }
         break;

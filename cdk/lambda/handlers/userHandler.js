@@ -80,8 +80,8 @@ exports.handler = async (event) => {
         // After schema refactor, user_sessions no longer has a separate session_id column.
         // Create a new session row and use its primary key (id) as the public session UUID.
         const sessionBody = parseBody(event.body);
-        const sessionRole = sessionBody.role || 'student'; // default to 'student' if not provided
-        
+        const sessionRole = sessionBody.role || "student"; // default to 'student' if not provided
+
         const result = await sqlConnection`
           INSERT INTO user_sessions (role, created_at, last_active_at)
           VALUES (${sessionRole}, NOW(), NOW())
@@ -148,9 +148,11 @@ exports.handler = async (event) => {
         const updateSessionBody = parseBody(event.body);
         const updateRole = updateSessionBody.role;
 
-        if (!updateRole || !['student', 'instructor'].includes(updateRole)) {
+        if (!updateRole || !["student", "instructor"].includes(updateRole)) {
           response.statusCode = 400;
-          response.body = JSON.stringify({ error: "Valid role (student or instructor) is required" });
+          response.body = JSON.stringify({
+            error: "Valid role (student or instructor) is required",
+          });
           break;
         }
 
@@ -594,6 +596,29 @@ exports.handler = async (event) => {
 
         response.statusCode = 204;
         response.body = "";
+        break;
+
+      // GET /public/config/userGuidelines - Public endpoint to fetch user guidelines
+      case "GET /public/config/userGuidelines":
+        try {
+          const guidelinesResult = await sqlConnection`
+            SELECT value FROM system_settings WHERE key = 'user_guidelines'
+          `;
+
+          const userGuidelines =
+            guidelinesResult.length > 0 ? guidelinesResult[0].value : "";
+
+          response.statusCode = 200;
+          response.body = JSON.stringify({
+            userGuidelines: userGuidelines,
+          });
+        } catch (error) {
+          console.error("Error getting user guidelines:", error);
+          response.statusCode = 500;
+          response.body = JSON.stringify({
+            error: "Failed to get user guidelines",
+          });
+        }
         break;
 
       default:
