@@ -248,7 +248,7 @@ export default function AISettings() {
       <div>
       <h2 className="text-3xl font-bold text-gray-900">Platform Configuration</h2>
         <p className="text-gray-500 mt-1">
-          Configure global platform settings including token limits, AI behavior, and welcome messages.
+          Configure global platform settings including token limits, AI behavior, User Guidelines and welcome messages.
         </p>
       </div>
 
