@@ -146,7 +146,7 @@ aws secretsmanager create-secret ^
 ```powershell
 aws secretsmanager create-secret `
   --name github-personal-access-token `
-  --secret-string "{`"my-github-token`": `"<YOUR-GITHUB-TOKEN>`"}" `
+  --secret-string '{\"my-github-token\": \"<YOUR-GITHUB-TOKEN>\"}' `
   --profile <YOUR-PROFILE-NAME>
 ```
 
@@ -229,7 +229,7 @@ aws secretsmanager create-secret ^
 ```powershell
 aws secretsmanager create-secret `
   --name OERSecrets `
-  --secret-string "{`"DB_Username`":`"<YOUR-DB-USERNAME>`"}" `
+  --secret-string '{\"DB_Username\": \"<YOUR-DB-USERNAME>\"}' `
   --profile <YOUR-PROFILE-NAME>
 ```
 
