@@ -6,7 +6,12 @@ import { MCQEditable } from "./MCQEditable";
 import { ExportDialog } from "./ExportDialog";
 import type { I5HPMultiChoiceQuestion } from "@/types/MaterialEditor";
 import { ChevronDown, ChevronUp, Download, Plus, Trash2 } from "lucide-react";
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface MCQEditableContainerProps {
   initialQuestions: I5HPMultiChoiceQuestion[];
@@ -23,7 +28,7 @@ export function MCQEditableContainer({
   const [questions, setQuestions] = useState<I5HPMultiChoiceQuestion[]>(initialQuestions);
   const [isExpanded, setIsExpanded] = useState(true);
   const [title, setTitle] = useState("Untitled Quiz");
-  const [exportFormat, setExportFormat] = useState<string>("json");
+  const [exportFormat, setExportFormat] = useState<string>("pdf");
   const [showExportDialog, setShowExportDialog] = useState(false);
 
   const handleQuestionUpdate = (index: number, updatedQuestion: I5HPMultiChoiceQuestion) => {
@@ -230,26 +235,44 @@ export function MCQEditableContainer({
               Add Question
             </Button>
 
-            <div className="flex w-full md:w-fit gap-2">
-
-              <Select value={exportFormat} onValueChange={(v) => setExportFormat(v)}> 
-                <SelectTrigger className="bg-background border border-text-muted-foreground cursor-pointer w-[50%] md:w-fit sm:w-auto">
-                  Export as: <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem className="cursor-pointer" value="json">JSON</SelectItem>
-                  <SelectItem className="cursor-pointer" value="h5p">H5P</SelectItem>
-                  <SelectItem className="cursor-pointer" value="pdf">PDF</SelectItem>
-                </SelectContent>
-              </Select>
-
+            <div className="flex w-full md:w-fit">
               <Button
                 onClick={handleExport}
-                className="cursor-pointer w-[50%] md:w-fit sm:w-auto"
+                className="cursor-pointer rounded-r-none"
               >
-                Export
                 <Download className="h-4 w-4 mr-2" />
+                Export as {exportFormat.toUpperCase()}
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="default"
+                    className="cursor-pointer rounded-l-none border-l border-primary-foreground/20 px-2"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => setExportFormat("pdf")}
+                  >
+                    PDF
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => setExportFormat("json")}
+                  >
+                    JSON
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="cursor-pointer"
+                    onClick={() => setExportFormat("h5p")}
+                  >
+                    H5P
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </CardFooter>
         </>
