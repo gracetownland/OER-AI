@@ -324,16 +324,33 @@ To resolve this issue, follow one of these approaches:
 
 ## Post-Deployment
 
-### Step 1: Build AWS Amplify App
+### Step 1: Authorize GitHub Connection
 
-1. Log in to AWS console, and navigate to **AWS Amplify**. You can do so by typing `Amplify` in the search bar at the top.
-2. From `All apps`, click `<STACK-PREFIX>-amplify`.
-3. You will see multiple branches listed (`main`, `dev`, `api_endpoint_setup`). Click on the branch that corresponds to your GitHub repository's default branch (typically `main`).
-4. Click `Redeploy this version` to trigger a build
-5. Wait for the build to complete (this may take 5-10 minutes)
-6. You now have access to the `Amplify App ID` and the public domain name to use the web app.
+After CDK deployment, you need to authorize the GitHub connection:
 
-### Step 2: Configure Admin User
+1. Navigate to **AWS Developer Tools Console** → **Connections** (or search for "CodeStar Connections")
+2. Find the connection named `<STACK-PREFIX>-Amplify-amplify-github-connection`
+3. The status will show **Pending** - click on the connection
+4. Click **Update pending connection**
+5. Click **Install a new app** to install the AWS Connector for GitHub
+6. Sign in to GitHub and authorize AWS to access your forked OER-AI repository
+7. The connection status should change to **Available**
+
+> [!IMPORTANT]
+> Also authorize the CICD connection (`<STACK-PREFIX>-CICD-github-connection`) for the Docker build pipeline.
+
+### Step 2: Connect Amplify to Repository
+
+1. Navigate to **AWS Amplify Console** (search for "Amplify")
+2. Click on your app `<STACK-PREFIX>-amplify`
+3. Click **Hosting** → **Connect a repository** (or in App settings)
+4. Choose **GitHub** as the source
+5. Select the connection you authorized in Step 1
+6. Select your forked `OER-AI` repository and the `main` branch
+7. Click **Save and deploy**
+8. Wait for the build to complete (5-10 minutes)
+
+### Step 3: Configure Admin User
 
 To create an admin user for accessing the admin dashboard:
 
@@ -351,7 +368,7 @@ To create an admin user for accessing the admin dashboard:
 9. Select the "admin" group
 10. On first login, you'll be prompted to change your password
 
-### Step 3: Visit Web App
+### Step 4: Visit Web App
 
 You can now navigate to the web app URL (found in the Amplify console) to see your application in action.
 
@@ -423,22 +440,25 @@ To take down the deployed stack for a fresh redeployment in the future, follow t
 3. **Delete Secrets:**
    - Navigate to AWS Secrets Manager
    - Delete the following secrets:
-     - `github-personal-access-token`
      - `OERSecrets`
      - Any database credentials created by the stack
 
-4. **Delete SSM Parameters:**
+4. **Delete GitHub Connections:**
+   - Navigate to **AWS Developer Tools** → **Connections**
+   - Delete the connections created by the stack
+
+5. **Delete SSM Parameters:**
    - Navigate to AWS Systems Manager → Parameter Store
    - Delete the following parameters:
      - `oer-owner-name`
      - `/OER/AllowedEmailDomains`
      - Any other parameters created by the stack
 
-5. **Delete ECR Repositories** (if any were created):
+6. **Delete ECR Repositories** (if any were created):
    - Navigate to Amazon ECR
    - Delete repositories created by the stack
 
-6. **Verify Cleanup**:
+7. **Verify Cleanup**:
    - Check CloudWatch Logs for any remaining log groups
    - Check Lambda functions for any remaining functions
    - Check API Gateway for any remaining APIs
