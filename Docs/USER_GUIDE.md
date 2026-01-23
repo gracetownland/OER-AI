@@ -128,6 +128,7 @@ Troubleshooting tips:
 - For audio issues, check browser permissions and the selected voice.
 - If H5P export fails, check the API logs and ensure the packaging backend is reachable.
 - For WebSocket (chat streaming) issues, inspect the browser console for WebSocket endpoints and network errors.
+- If you are logged in as an admin, and you have just uploaded new materials, they will initially be disabled by default. Make sure to enable the "status" toggle, and the textbook will be ready for use.
 
 Best practices:
 - Be specific with user questions and include a textbook section or page reference to improve source relevance.

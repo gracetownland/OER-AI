@@ -440,6 +440,13 @@ You can now navigate to the web app URL (found in the Amplify console) to see yo
   - Lambda functions have correct permissions
   - Frontend is using the correct WebSocket URL
 
+**Issue: Chatbot responds with "I'm experiencing technical difficulties and cannot process your request at this time"**
+
+- Solution:
+  - Most likely, this is a guardrail issue. Double check the CloudWatch logs for the Text Generation Lambda function.
+  - Make sure the guardrail can be found. Even if it's created and shows status "Ready", make sure you create a versioned release from the working draft (eg: version 1) instead of using the DRAFT version.
+
+
 ## Cleanup
 
 ### Taking down the deployed stack
