@@ -14,6 +14,7 @@ import { Search, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getWelcomeMessage } from "@/lib/welcomeMessage";
 import type { Textbook } from "@/types/Textbook";
+import { useAuthToken } from "@/providers/AuthProvider";
 
 // Define a custom UUID type to avoid the crypto module import
 type UUID = string;
@@ -40,7 +41,10 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
-  const [welcomeMsg, setWelcomeMsg] = useState<string | null>(null);
+  const [welcomeMsg, setWelcomeMsg] = useState<string | null>(
+    import.meta.env.VITE_DEFAULT_WELCOME_MESSAGE ||
+    "Welcome to the OpenED AI study companion. Happy learning! :-)"
+  );
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
 
   // Check if user has seen the welcome message
@@ -64,8 +68,12 @@ export default function HomePage() {
     fetchMessage();
   }, []);
 
+  const { token } = useAuthToken();
+
   // Fetch textbooks from API
   const fetchTextbooks = async (offset = 0, append = false) => {
+    if (!token) return;
+
     try {
       if (append) {
         setLoadingMore(true);
@@ -73,17 +81,9 @@ export default function HomePage() {
         setLoading(true);
       }
 
-      // Get public token
-      const tokenResp = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-      );
-      if (!tokenResp.ok) throw new Error("Failed to get public token");
-      const { token } = await tokenResp.json();
-
       // Use the token to fetch textbooks with pagination
       const response = await fetch(
-        `${
-          import.meta.env.VITE_API_ENDPOINT
+        `${import.meta.env.VITE_API_ENDPOINT
         }/textbooks?limit=20&offset=${offset}`,
         {
           headers: {
@@ -109,8 +109,10 @@ export default function HomePage() {
   };
 
   useEffect(() => {
-    fetchTextbooks();
-  }, []);
+    if (token) {
+      fetchTextbooks();
+    }
+  }, [token]);
 
   const handleLoadMore = () => {
     if (pagination && pagination.hasMore) {

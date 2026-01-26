@@ -1,5 +1,5 @@
 export async function getWelcomeMessage(): Promise<string> {
-  const defaultMessage = `Welcome to the  AI study companion.`;
+  const defaultMessage = import.meta.env.VITE_DEFAULT_WELCOME_MESSAGE || `Welcome to the OpenED AI study companion. Happy learning! :-)`;
   try {
     const resp = await fetch(`${import.meta.env.VITE_API_ENDPOINT}/public/config/welcomeMessage`);
     if (!resp.ok) return defaultMessage;

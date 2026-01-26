@@ -8,12 +8,15 @@ import SideBar from "@/components/ChatInterface/SideBar";
 import type { Textbook } from "@/types/Textbook";
 import type { ChatSession } from "@/providers/textbookView";
 import { useUserSession } from "@/providers/usersession";
+import { useAuthToken } from "@/providers/AuthProvider";
 import HomePageHeader from "@/components/HomePageHeader";
+
 
 export default function TextbookLayout() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { userSessionId } = useUserSession();
+  const { token } = useAuthToken();
 
   const [textbook, setTextbook] = useState<Textbook | null>(null);
   const [loading, setLoading] = useState(true);
@@ -28,14 +31,9 @@ export default function TextbookLayout() {
   // Fetch textbook data
   useEffect(() => {
     const fetchTextbook = async () => {
-      try {
-        // Get public token first
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResponse.json();
+      if (!token || !id) return;
 
+      try {
         // Make authenticated request
         const response = await fetch(
           `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${id}`,
@@ -63,25 +61,19 @@ export default function TextbookLayout() {
 
     fetchTextbook();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, token]);
 
   // Fetch chat sessions for this textbook
   const fetchChatSessions = async () => {
-    if (!id || !userSessionId) {
+    if (!id || !userSessionId || !token) {
       return;
     }
 
     setIsLoadingChatSessions(true);
     try {
-      const tokenResponse = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-      );
-      if (!tokenResponse.ok) throw new Error("Failed to get public token");
-      const { token } = await tokenResponse.json();
 
       const response = await fetch(
-        `${
-          import.meta.env.VITE_API_ENDPOINT
+        `${import.meta.env.VITE_API_ENDPOINT
         }/textbooks/${id}/chat_sessions/user/${userSessionId}`,
         {
           headers: {
@@ -113,18 +105,13 @@ export default function TextbookLayout() {
   useEffect(() => {
     fetchChatSessions();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, userSessionId]);
+  }, [id, userSessionId, token]);
 
   // Create a new chat session
   const createNewChatSession = async (): Promise<ChatSession | null> => {
-    if (!id || !userSessionId) return null;
+    if (!id || !userSessionId || !token) return null;
 
     try {
-      const tokenResponse = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-      );
-      if (!tokenResponse.ok) throw new Error("Failed to get public token");
-      const { token } = await tokenResponse.json();
 
       const createResponse = await fetch(
         `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${id}/chat_sessions`,

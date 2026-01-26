@@ -131,11 +131,10 @@ function SidebarContent({
               key={session.id}
               variant="link"
               onClick={() => handleSelectSession(session.id)}
-              className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${
-                activeChatSessionId === session.id
+              className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${activeChatSessionId === session.id
                   ? "text-foreground font-medium"
                   : "text-muted-foreground hover:text-foreground hover:underline"
-              }`}
+                }`}
             >
               <MessageSquare className="h-4 w-4 mr-2 flex-shrink-0" />
               {/* temporary place holder for chat names */}
@@ -284,11 +283,10 @@ function SidebarContent({
         <nav className="space-y-2 mb-4">
           <Button
             variant={"link"}
-            className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${
-              location.pathname === "/"
+            className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${location.pathname === "/"
                 ? "text-foreground font-medium"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
             onClick={() => {
               navigate(`/textbook/${textbookId}/faq`);
               setMobileOpen(false);
@@ -302,11 +300,10 @@ function SidebarContent({
               navigate(`/textbook/${textbookId}/practice`);
               setMobileOpen(false);
             }}
-            className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${
-              location.pathname.includes("/practice")
+            className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${location.pathname.includes("/practice")
                 ? "text-foreground font-medium"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Practice Material
           </Button>
@@ -320,11 +317,10 @@ function SidebarContent({
               navigate(`/textbook/${textbookId}/material-editor`);
               setMobileOpen(false);
             }}
-            className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${
-              location.pathname.includes("/material-editor")
+            className={`cursor-pointer w-full justify-start px-3 py-2 text-sm rounded-md transition-colors ${location.pathname.includes("/material-editor")
                 ? "text-foreground font-medium"
                 : "text-muted-foreground hover:text-foreground"
-            }`}
+              }`}
           >
             Material Editor
           </Button>
@@ -357,24 +353,21 @@ export default function SideBar({
 
       {/* Mobile sidebar */}
       <div
-        className={`md:hidden pt-[10px] fixed inset-0 z-40 transition-opacity ${
-          mobileOpen ? "visible" : "pointer-events-none invisible"
-        }`}
+        className={`md:hidden pt-[10px] fixed inset-0 z-40 transition-opacity ${mobileOpen ? "visible" : "pointer-events-none invisible"
+          }`}
         inert={!mobileOpen ? true : undefined}
       >
         {/*mobile backdrop */}
         <div
-          className={`absolute inset-0 bg-black/40 ${
-            mobileOpen ? "opacity-100" : "opacity-0"
-          }`}
+          className={`absolute inset-0 bg-black/40 ${mobileOpen ? "opacity-100" : "opacity-0"
+            }`}
           onClick={() => setMobileOpen(false)}
         />
 
         {/* mobile view Panel */}
         <div
-          className={`pt-[70px] absolute left-0  h-full w-64 bg-muted border-r p-4 transform transition-transform ${
-            mobileOpen ? "translate-x-0" : "-translate-x-full"
-          }`}
+          className={`pt-[70px] absolute left-0  h-full w-64 bg-muted border-r p-4 transform transition-transform ${mobileOpen ? "translate-x-0" : "-translate-x-full"
+            }`}
         >
           <SidebarContent
             textbookTitle={textbookTitle}

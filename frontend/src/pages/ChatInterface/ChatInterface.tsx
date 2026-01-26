@@ -20,6 +20,7 @@ import type {
 } from "@/types/Chat";
 import { useUserSession } from "@/providers/usersession";
 import { useMode } from "@/providers/mode";
+import { useAuthToken } from "@/providers/AuthProvider";
 
 export default function AIChatPage() {
   // URL search params for pre-filled questions (from FAQ page)
@@ -67,6 +68,7 @@ export default function AIChatPage() {
   const { sessionUuid } = useUserSession();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { mode } = useMode();
+  const { token } = useAuthToken();
 
   const textbookTitle = textbook?.title ?? "Calculus: Volume 3";
 
@@ -156,74 +158,11 @@ export default function AIChatPage() {
   }, [baseWebSocketUrl, webSocketToken]);
 
   useEffect(() => {
-    const apiEndpoint = import.meta.env.VITE_API_ENDPOINT;
-    if (!apiEndpoint) {
-      console.warn(
-        "[WebSocket] API endpoint not configured; skipping token fetch"
-      );
+    if (!token) {
       return;
     }
-
-    let isActive = true;
-    let refreshTimeoutId: number | undefined;
-    const refreshDelayMs = 14 * 60 * 1000;
-    const retryDelayMs = 30 * 1000;
-
-    async function fetchToken() {
-      if (!isActive) {
-        return;
-      }
-
-      try {
-        const response = await fetch(`${apiEndpoint}/user/publicToken`);
-        if (!response.ok) {
-          throw new Error(
-            `Token request failed with status ${response.status}`
-          );
-        }
-
-        const { token } = await response.json();
-        if (!isActive) {
-          return;
-        }
-
-        setWebSocketToken(token);
-        scheduleNext(refreshDelayMs);
-      } catch (error) {
-        console.error("[WebSocket] Failed to fetch streaming token:", error);
-        if (!isActive) {
-          return;
-        }
-
-        setWebSocketToken(null);
-        scheduleNext(retryDelayMs);
-      }
-    }
-
-    function scheduleNext(delay: number) {
-      if (!isActive) {
-        return;
-      }
-
-      if (refreshTimeoutId !== undefined) {
-        window.clearTimeout(refreshTimeoutId);
-      }
-
-      refreshTimeoutId = window.setTimeout(
-        fetchToken,
-        delay
-      ) as unknown as number;
-    }
-
-    fetchToken();
-
-    return () => {
-      isActive = false;
-      if (refreshTimeoutId !== undefined) {
-        window.clearTimeout(refreshTimeoutId);
-      }
-    };
-  }, []);
+    setWebSocketToken(token);
+  }, [token]);
 
   // WebSocket message handlers - memoized to prevent unnecessary reconnections
   const handleWebSocketMessage = useCallback(
@@ -341,14 +280,9 @@ export default function AIChatPage() {
       setIsLoadingSharedChat(true);
       setSharedChatError(null);
 
-      try {
-        // Get public token
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResponse.json();
+      if (!token) return;
 
+      try {
         // Fetch shared chat history from the public endpoint
         const response = await fetch(
           `${import.meta.env.VITE_API_ENDPOINT
@@ -472,6 +406,7 @@ export default function AIChatPage() {
     setSearchParams,
     setActiveChatSessionId,
     refreshChatSessions,
+    token, // Add token dependency
   ]);
 
   // Load chat history and redirect if no chat session ID
@@ -488,12 +423,7 @@ export default function AIChatPage() {
     const loadChatHistory = async () => {
       setIsLoadingHistory(true);
       try {
-        // Get public token
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResponse.json();
+        if (!token) return;
 
         // Get interactions for the specific chat session
         const response = await fetch(
@@ -562,19 +492,14 @@ export default function AIChatPage() {
     };
 
     loadChatHistory();
-  }, [activeChatSessionId, sessionUuid, sharedChatSessionId, hasForkedChat]);
+  }, [activeChatSessionId, sessionUuid, sharedChatSessionId, hasForkedChat, token]);
 
   // Fetch prompt templates from API
   useEffect(() => {
     const fetchPrompts = async () => {
-      try {
-        // Acquire public token then call the endpoint with Authorization
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResponse.json();
+      if (!token) return;
 
+      try {
         const response = await fetch(
           `${import.meta.env.VITE_API_ENDPOINT}/prompt_templates`,
           {
@@ -602,18 +527,11 @@ export default function AIChatPage() {
     };
 
     fetchPrompts();
-  }, []);
+  }, [token]);
 
   const fetchSharedPrompts = useCallback(async () => {
-    if (!textbook?.id) return; // Need textbook_id
+    if (!textbook?.id || !token) return; // Need textbook_id and token
     try {
-      // Acquire public token
-      const tokenResponse = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-      );
-      if (!tokenResponse.ok) throw new Error("Failed to get public token");
-      const { token } = await tokenResponse.json();
-
       // Pass role as query param to backend
       const response = await fetch(
         `${import.meta.env.VITE_API_ENDPOINT}/textbooks/${textbook.id
@@ -631,17 +549,14 @@ export default function AIChatPage() {
       console.error("Error fetching shared prompts:", error);
       setSharedPrompts([]);
     }
-  }, [textbook?.id, mode]);
+  }, [textbook?.id, mode, token]);
 
   const startGuidedConversation = async (template: GuidedPromptTemplate) => {
     try {
       // lazy fetch questions for template
       let questions = template.questions;
       if (!questions) {
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        const { token } = await tokenResponse.json();
+        if (!token) return; // Need cached token
 
         const questionsResponse = await fetch(
           `${import.meta.env.VITE_API_ENDPOINT}/prompt_templates/${template.id
@@ -697,14 +612,8 @@ export default function AIChatPage() {
 
     // Handle forking shared chat on first message
     if (sharedChatSessionId && !hasForkedChat) {
+      if (!token) return; // Need cached token
       try {
-        // Get public token
-        const tokenResponse = await fetch(
-          `${import.meta.env.VITE_API_ENDPOINT}/user/publicToken`
-        );
-        if (!tokenResponse.ok) throw new Error("Failed to get public token");
-        const { token } = await tokenResponse.json();
-
         // Call fork endpoint
         const forkResponse = await fetch(
           `${import.meta.env.VITE_API_ENDPOINT}/chat_sessions/fork`,
@@ -1066,14 +975,14 @@ export default function AIChatPage() {
     <div className="w-full max-w-2xl 2xl:max-w-3xl px-4 py-4">
       <div
         className={`flex flex-col w-full ${messages.length === 0
-            ? "justify-center"
-            : "justify-between min-h-[90vh]"
+          ? "justify-center"
+          : "justify-between min-h-[90vh]"
           }`}
       >
         <div
           className={`flex flex-col w-full max-w-2xl 2xl:max-w-3xl px-4 py-4 ${messages.length === 0
-              ? "justify-center"
-              : "justify-between min-h-[90vh]"
+            ? "justify-center"
+            : "justify-between min-h-[90vh]"
             }`}
         >
           {/* top section */}

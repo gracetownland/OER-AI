@@ -55,9 +55,8 @@ export default function TextbookCard({ textbook }: { textbook: Textbook }) {
             />
           ) : null}
           <Library
-            className={`h-12 w-12 text-white/20 group-hover:scale-110 group-hover:text-white/30 transition-all duration-500 ${
-              textbook.logo_url ? "hidden" : ""
-            }`}
+            className={`h-12 w-12 text-white/20 group-hover:scale-110 group-hover:text-white/30 transition-all duration-500 ${textbook.logo_url ? "hidden" : ""
+              }`}
           />
 
           <div className="absolute top-3 right-3 max-w-[70%]">
