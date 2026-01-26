@@ -33,6 +33,8 @@ Docker Lambda cold starts can take 2-5 seconds. We optimize this by:
 - helpers/faq_cache.py: Semantic caching for frequent questions
 - helpers/token_limit_helper.py: Daily usage limits
 - helpers/session_security.py: Input validation and sanitization
+
+# helpers/session_security.py: Input validation and sanitization
 """
 
 import os
@@ -41,9 +43,37 @@ import time
 import logging
 import threading
 
+# Import custom exceptions
+try:
+    from helpers.exceptions import (
+        TextGenerationError,
+        ValidationError,
+        ConfigurationError,
+        TokenLimitError,
+        UpstreamServiceError
+    )
+except ImportError:
+    # Fallback for local testing if helpers path issues arise
+    class TextGenerationError(Exception):
+        def __init__(self, message, status_code=500, error_code="INTERNAL", details=None):
+            self.status_code = status_code
+            self.error_code = error_code
+            self.message = message
+            self.details = details
+    
+    class ValidationError(TextGenerationError):
+        def __init__(self, m, d=None): super().__init__(m, 400, "VALIDATION", d)
+    class ConfigurationError(TextGenerationError):
+        def __init__(self, m): super().__init__(m, 500, "CONFIG")
+    class TokenLimitError(TextGenerationError):
+        def __init__(self, m, u=None): super().__init__(m, 429, "LIMIT", {"usage": u})
+    class UpstreamServiceError(TextGenerationError):
+        def __init__(self, m, s): super().__init__(f"{s}: {m}", 502, "UPSTREAM")
+
 # Set up basic logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+# =============================================================================
 
 # Environment variables
 DB_SECRET_NAME = os.environ["SM_DB_CREDENTIALS"]
@@ -478,7 +508,7 @@ def parse_and_validate_request(event):
         tuple: (question, textbook_id, chat_session_id, is_websocket, connection_id, websocket_endpoint)
         
     Raises:
-        ValueError: If required parameters are missing or invalid
+        ValidationError: If required parameters are missing or invalid
     """
     # Check for WebSocket invocation
     connection_id = event.get("requestContext", {}).get("connectionId")
@@ -495,17 +525,20 @@ def parse_and_validate_request(event):
     # Parse body
     body = {}
     if event.get("body"):
-        body = json.loads(event.get("body"))
+        try:
+            body = json.loads(event.get("body"))
+        except json.JSONDecodeError:
+            raise ValidationError("Invalid JSON body")
         
     question = body.get("query", "")
     textbook_id = body.get("textbook_id", "")
     
     # Validation
     if not textbook_id:
-        raise ValueError("Missing textbook_id parameter")
+        raise ValidationError("Missing textbook_id parameter")
     
     if not question:
-        raise ValueError("No question provided in the query field")
+        raise ValidationError("No question provided in the query field")
         
     return question, textbook_id, chat_session_id, is_websocket, connection_id, websocket_endpoint
 
@@ -515,7 +548,10 @@ def enforce_token_limits(connection, chat_session_id, ssm_client, is_websocket, 
     Check if the user has exceeded their daily token limit.
     
     Returns:
-        bool: True if check passed (or unlimited), False if limit exceeded
+        bool: True if check passed (or unlimited)
+        
+    Raises:
+        TokenLimitError: If limit is exceeded
     """
     # Lazy import
     from helpers.token_limit_helper import get_user_session_from_chat_session, get_session_token_status
@@ -566,27 +602,25 @@ def enforce_token_limits(connection, chat_session_id, ssm_client, is_websocket, 
                 except Exception as ws_error:
                     logger.error(f"Failed to send token limit error via WebSocket: {ws_error}")
             
-            # Return False and detailed info could be handled by caller, 
-            # but here we just return False to indicate "stop processing"
-            # The caller will handle the 429 response
-            return False, {
-                "error": "Daily token limit exceeded",
-                "message": error_message,
-                "usage_info": {
-                    "tokens_used": tokens_used,
-                    "daily_limit": daily_limit,
-                    "remaining_tokens": 0,
-                    "hours_until_reset": hours_until_reset,
-                    "reset_time": reset_time
-                }
+            # Raise exception to stop processing
+            usage_info = {
+                "tokens_used": tokens_used,
+                "daily_limit": daily_limit,
+                "remaining_tokens": 0,
+                "hours_until_reset": hours_until_reset,
+                "reset_time": reset_time
             }
+            raise TokenLimitError(error_message, usage_info=usage_info)
             
-        return True, None
+        return True
         
+    except TokenLimitError:
+        raise
     except Exception as e:
         logger.error(f"Error in token pre-check: {e}", exc_info=True)
         # Fail open
-        return True, None
+        return True
+
 
 
 def handle_faq_check(question, textbook_id, embeddings, connection, is_websocket, connection_id, websocket_endpoint):
@@ -789,23 +823,17 @@ def handler(event, context):
     
     connection = None
     
+
     try:
         # 1. Initialization
         try:
             initialize_constants()
         except Exception as e:
             logger.error(f"❌ Failed to initialize constants: {e}")
-            return finalize({'statusCode': 500, 'body': json.dumps(f'Configuration error: {str(e)}')})
+            raise ConfigurationError(f"Configuration error: {str(e)}")
 
         # 2. Parse & Validate Request
-        try:
-            question, textbook_id, chat_session_id, is_websocket, connection_id, websocket_endpoint = parse_and_validate_request(event)
-        except ValueError as ve:
-            return finalize({
-                "statusCode": 400,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": str(ve)})
-            })
+        question, textbook_id, chat_session_id, is_websocket, connection_id, websocket_endpoint = parse_and_validate_request(event)
 
         # 3. Security: Sanitize Session ID
         if chat_session_id:
@@ -813,24 +841,17 @@ def handler(event, context):
             try:
                 chat_session_id = sanitize_session_id(chat_session_id)
             except ValueError as e:
-                return finalize({
-                    "statusCode": 400,
-                    "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({"error": "Invalid session ID format", "message": str(e)})
-                })
+                raise ValidationError("Invalid session ID format", {"original_error": str(e)})
 
         # 4. Resource Setup (DB & Retriever)
-        connection = connect_to_db()
+        try:
+            connection = connect_to_db()
+        except Exception as e:
+            raise UpstreamServiceError(f"Failed to connect to database: {str(e)}", "Database")
         
         # Token Check
         ssm_client = get_ssm_client()
-        can_proceed, error_data = enforce_token_limits(connection, chat_session_id, ssm_client, is_websocket, connection_id, websocket_endpoint)
-        if not can_proceed:
-            return finalize({
-                "statusCode": 429,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps(error_data)
-            })
+        enforce_token_limits(connection, chat_session_id, ssm_client, is_websocket, connection_id, websocket_endpoint)
 
         # Embeddings & Retriever
         embeddings = get_embeddings()
@@ -853,17 +874,11 @@ def handler(event, context):
                 embeddings=embeddings
             )
             if retriever is None:
-                 return finalize({
-                    "statusCode": 404,
-                    "headers": {"Content-Type": "application/json"},
-                    "body": json.dumps({"error": f"No embeddings found for textbook {textbook_id}"})
-                })
+                 raise ValidationError(f"No embeddings found for textbook {textbook_id}")
+        except ValidationError:
+            raise
         except Exception as re:
-            return finalize({
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({"error": f"Failed to initialize retriever: {str(re)}"})
-            })
+            raise UpstreamServiceError(f"Failed to initialize retriever: {str(re)}", "VectorStore")
 
         # 5. Business Logic: FAQ Check OR Generate Response
         response_data = None
@@ -884,10 +899,7 @@ def handler(event, context):
                 )
             except Exception as query_error:
                 logger.error(f"Error processing query: {query_error}", exc_info=True)
-                response_data = {
-                    "response": "I apologize, but I'm experiencing technical difficulties at the moment.",
-                    "sources_used": []
-                }
+                raise UpstreamServiceError(f"Error processing query: {str(query_error)}", "LLM/Bedrock")
 
         # 6. Post-Processing (Usage Tracking & Logging)
         session_name = None
@@ -918,12 +930,33 @@ def handler(event, context):
             "body": json.dumps(response_body)
         })
 
+    except TextGenerationError as tge:
+        logger.error(f"Request failed with {tge.error_code}: {tge.message}")
+        if tge.details:
+            logger.error(f"Error details: {tge.details}")
+            
+        error_body = {
+            "error": tge.message,
+            "code": tge.error_code
+        }
+        if tge.details:
+            error_body["details"] = tge.details
+            
+        return finalize({
+            "statusCode": tge.status_code,
+            "headers": {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Headers": "*"
+            },
+            "body": json.dumps(error_body)
+        })
+
     except Exception as e:
-        logger.error(f"Error processing request: {e}", exc_info=True)
+        logger.error(f"Unhandled exception: {e}", exc_info=True)
         return finalize({
             "statusCode": 500,
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps({"error": f"Internal server error: {str(e)}"})
+            "body": json.dumps({"error": "Internal server error", "message": str(e)})
         })
         
     finally:
