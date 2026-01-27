@@ -78,8 +78,7 @@ def get_textbook_retriever(llm, textbook_id: str, vectorstore_config_dict: Dict[
                 user=vectorstore_config_dict['user'],
                 password=vectorstore_config_dict['password'],
                 host=vectorstore_config_dict['host'],
-                port=int(vectorstore_config_dict['port']),
-                sslmode='require'
+                port=int(vectorstore_config_dict['port'])
             )
             logger.info("Database connection established successfully")
             

@@ -167,8 +167,7 @@ try:
             database=db_creds["dbname"],
             user=db_creds["username"],
             password=db_creds["password"],
-            port=int(db_creds["port"]),
-            sslmode="require"
+            port=int(db_creds["port"])
         )
         logger.info("Database connection pool pre-warmed successfully")
     except Exception as pool_error:
@@ -327,8 +326,7 @@ def get_db_connection_pool():
                         database=secret["dbname"],
                         user=secret["username"],
                         password=secret["password"],
-                        port=int(secret["port"]),
-                        sslmode="require"
+                        port=int(secret["port"])
                     )
                     logger.info("Database connection pool created")
                 except Exception as e:
