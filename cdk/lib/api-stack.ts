@@ -25,6 +25,8 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 
 interface ApiGatewayStackProps extends cdk.StackProps {
   ecrRepositories: { [key: string]: ecr.Repository };
@@ -1244,6 +1246,23 @@ export class ApiGatewayStack extends cdk.Stack {
       textGenImageWaiter.node.defaultChild as cdk.CfnResource
     );
 
+    // EventBridge scheduled rule to keep Lambda warm (every 7 minutes)
+    // This prevents cold starts by periodically invoking the function with a warmup payload
+    const textGenWarmupRule = new events.Rule(this, `${id}-TextGenWarmupRule`, {
+      ruleName: `${id}-TextGenKeepWarm`,
+      description: "Keeps text generation Lambda warm by invoking every 7 minutes",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(7)),
+    });
+
+    textGenWarmupRule.addTarget(
+      new targets.LambdaFunction(textGenLambdaDockerFunc, {
+        event: events.RuleTargetInput.fromObject({
+          warmup: true,
+          source: "eventbridge-scheduled",
+        }),
+      })
+    );
+
     // API Gateway permissions
 
     textGenLambdaDockerFunc.addPermission("AllowApiGatewayInvoke", {
@@ -1905,26 +1924,32 @@ export class ApiGatewayStack extends cdk.Stack {
       practiceMaterialImageWaiter.node.defaultChild as cdk.CfnResource
     );
 
-    // Provisioned Concurrency enabled with 1 execution to improve cold start performance
-    const practiceMaterialAlias = new lambda.Alias(
-      this,
-      `${id}-PracticeMaterialAlias`,
-      {
-        aliasName: "live",
-        version: practiceMaterialDockerFunc.currentVersion,
-        provisionedConcurrentExecutions: 1,
-      }
+    // EventBridge scheduled rule to keep Lambda warm (every 7 minutes)
+    // This replaces provisioned concurrency for cost savings (~$15-20/month saved)
+    const practiceMaterialWarmupRule = new events.Rule(this, `${id}-PracticeMaterialWarmupRule`, {
+      ruleName: `${id}-PracticeMaterialKeepWarm`,
+      description: "Keeps practice material Lambda warm by invoking every 7 minutes",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(7)),
+    });
+
+    practiceMaterialWarmupRule.addTarget(
+      new targets.LambdaFunction(practiceMaterialDockerFunc, {
+        event: events.RuleTargetInput.fromObject({
+          warmup: true,
+          source: "eventbridge-scheduled",
+        }),
+      })
     );
 
     // WebSocket streaming support - add environment variable and permissions
     // (must be after practiceMaterialDockerFunc is defined)
-    // Use alias to leverage provisioned concurrency
+    // Using function directly (no alias) since we use EventBridge keep-warm instead of provisioned concurrency
     defaultFunction.addEnvironment(
       "PRACTICE_MATERIAL_FUNCTION_NAME",
-      practiceMaterialAlias.functionName
+      practiceMaterialDockerFunc.functionName
     );
     practiceMaterialDockerFunc.addToRolePolicy(wsPolicy);
-    practiceMaterialAlias.grantInvoke(defaultFunction);
+    practiceMaterialDockerFunc.grantInvoke(defaultFunction);
 
     // IAM: Secrets, SSM, Bedrock
 
