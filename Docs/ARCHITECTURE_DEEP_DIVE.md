@@ -26,6 +26,69 @@
 
 AWS CodePipeline and CodeBuild automates Docker image builds and Lambda deployments for seamless backend updates.
 
+### Lambda Cold Start Mitigation
+
+The application uses **provisioned concurrency** for both the text generation and practice material Lambda functions to eliminate cold starts and ensure consistent performance.
+
+#### Provisioned Concurrency
+
+Provisioned concurrency keeps Lambda instances initialized and ready to respond immediately to requests. The current configuration maintains 1 provisioned concurrent execution for each function:
+
+- **Text Generation Lambda**: 1 provisioned instance via `textGenAlias` (alias: "live")
+- **Practice Material Lambda**: 1 provisioned instance via `practiceMaterialAlias` (alias: "live")
+
+**Benefits**:
+
+- **Zero cold starts**: Instances are always warm and ready
+- **Consistent latency**: Predictable response times for user requests
+- **Better user experience**: No delays when generating AI content
+
+**Cost**: Approximately $15-20 per month per function (~$30-40/month total)
+
+#### Alternative: EventBridge Warmup (Cost-Optimized)
+
+An alternative approach uses EventBridge scheduled rules to periodically invoke Lambda functions (e.g., every 7 minutes) with a warmup payload. This keeps instances warm without provisioned concurrency.
+
+**Benefits**:
+
+- **Lower cost**: Free tier eligible, minimal cost
+- **Simple implementation**: Single EventBridge rule per function
+
+**Trade-offs**:
+
+- **Potential cold starts**: If traffic is low between warmup invocations (>15 minutes), instances may still go cold
+- **Less predictable**: Performance depends on traffic patterns and warmup timing
+
+#### When to Use Each Approach
+
+**Use Provisioned Concurrency when**:
+
+- Consistent low-latency response times are critical
+- User experience requires immediate responses
+- Budget allows for the additional cost (~$30-40/month)
+- Traffic patterns are unpredictable
+
+**Use EventBridge Warmup when**:
+
+- Cost optimization is a priority
+- Occasional cold starts are acceptable
+- Traffic is relatively consistent and frequent
+- Budget is constrained
+
+#### Adjusting Provisioned Concurrency
+
+To change the number of provisioned instances, modify the `provisionedConcurrentExecutions` parameter in `cdk/lib/api-stack.ts`:
+
+```typescript
+const textGenAlias = new lambda.Alias(this, `${id}-TextGenAlias`, {
+  aliasName: "live",
+  version: textGenLambdaDockerFunc.currentVersion,
+  provisionedConcurrentExecutions: 2, // Increase for higher concurrency
+});
+```
+
+Monitor CloudWatch metrics (`ProvisionedConcurrencyUtilization`, `ProvisionedConcurrencySpilloverInvocations`) to determine if you need to adjust the provisioned capacity based on actual traffic patterns.
+
 ### Database Schema
 
 ![Database Diagram](./media/db-diagram.png)
