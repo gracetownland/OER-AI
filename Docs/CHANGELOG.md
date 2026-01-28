@@ -4,6 +4,47 @@ All notable changes to the OER-AI project after December 16, 2024.
 
 ---
 
+## v1.2.5 (January 2026)
+
+### Performance Optimizations
+
+**Provisioned Concurrency**
+
+- Enabled provisioned concurrency for both Text Generation and Practice Material Lambda functions
+- Eliminates cold start delays (previously 5-10 seconds) for AI-powered features
+- Lambda functions are always warm and ready to respond immediately
+- Documented trade-offs between provisioned concurrency and EventBridge warmup in `ARCHITECTURE_DEEP_DIVE.md`
+
+**API Gateway Caching**
+
+- Added 0.5GB API Gateway cache cluster for textbook endpoints
+- `/textbooks` and `/textbooks/{id}` responses cached for 5 minutes
+- Reduces database load and improves response times for homepage
+
+**Frontend Performance**
+
+- Implemented client-side caching for textbook data using sessionStorage (5-minute TTL)
+- Parallel API fetching: welcome message and textbooks now load concurrently using `Promise.all`
+- Eliminates waterfall loading pattern on homepage, saving ~500ms-1s on initial load
+
+### Text Generation Improvements
+
+- Refactored text generation code into modular functions for better maintainability
+- Implemented parallel pre-flight checks to reduce latency
+- Python version bumped to 3.12 for both Docker functions
+
+### CI/CD Pipeline
+
+- Migrated from GitHub Personal Access Tokens (PAT) to GitHub OAuth Apps
+- Provides more stable authentication without token expiration concerns
+- Updated deployment documentation with new GitHub App setup instructions
+
+### Infrastructure
+
+- Embedding region is now configurable via SSM Parameter instead of hardcoded `us-east-1`
+- Improved flexibility for multi-region deployments
+
+---
 
 ### Practice Material Optimization
 
@@ -23,10 +64,6 @@ All notable changes to the OER-AI project after December 16, 2024.
 - Added validation for textbook IDs during practice material generation
 - Implemented guardrails to filter out content unrelated to the textbook and prevent prompt injection attacks
 
-### CI/CD Pipeline
-
-- Migrated from GitHub Personal Access Tokens (PAT) to GitHub OAuth for direct connection
-- Eliminates potential issues from PAT expiration
 
 ### Analytics
 
@@ -35,11 +72,7 @@ All notable changes to the OER-AI project after December 16, 2024.
 
 ---
 
-## Notes
 
-- All changes maintain backward compatibility unless explicitly noted
-- For detailed technical implementation, refer to individual documentation files in the `Docs/` directory
 
----
 
 _For more information about specific features or changes, please refer to the relevant documentation in the `Docs/` folder or contact the development team._
