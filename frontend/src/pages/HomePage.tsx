@@ -138,7 +138,12 @@ export default function HomePage() {
       );
       const data = await response.json();
       setTextbooks((prev) => [...prev, ...(data.textbooks || [])]);
-      setPagination(data.pagination);
+      // Use the requested offset to ensure correct pagination state
+      // (API may return offset: 0 instead of the actual requested offset)
+      setPagination({
+        ...data.pagination,
+        offset: offset,
+      });
     } catch (error) {
       console.error("Error fetching more textbooks:", error);
     } finally {
