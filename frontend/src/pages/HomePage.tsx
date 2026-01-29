@@ -57,103 +57,63 @@ export default function HomePage() {
     }
   }, []);
 
+  useEffect(() => {
+    const fetchMessage = async () => {
+      const msg = await getWelcomeMessage();
+      setWelcomeMsg(msg);
+    };
+    fetchMessage();
+  }, []);
+
   const { token } = useAuthToken();
 
-  // Parallel fetch for both welcome message and textbooks (faster initial load)
-  useEffect(() => {
-    const fetchInitialData = async () => {
-      if (!token) return;
-
-      const cacheKey = `textbooks_0`;
-      const cacheTimeKey = `${cacheKey}_time`;
-      const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-      // Check textbook cache first
-      let cachedTextbooks = null;
-      try {
-        const cached = sessionStorage.getItem(cacheKey);
-        const cacheTime = sessionStorage.getItem(cacheTimeKey);
-        if (cached && cacheTime && Date.now() - parseInt(cacheTime) < CACHE_TTL_MS) {
-          cachedTextbooks = JSON.parse(cached);
-          console.log("Loaded textbooks from cache");
-        }
-      } catch (cacheError) {
-        console.warn("Cache read error:", cacheError);
-      }
-
-      // If we have cached textbooks, use them immediately
-      if (cachedTextbooks) {
-        setTextbooks(cachedTextbooks.textbooks || []);
-        setPagination(cachedTextbooks.pagination);
-        setLoading(false);
-        // Still fetch welcome message
-        const msg = await getWelcomeMessage();
-        setWelcomeMsg(msg);
-        return;
-      }
-
-      // Fetch both in parallel for faster initial load
-      setLoading(true);
-      try {
-        const [welcomeResult, textbooksResponse] = await Promise.all([
-          getWelcomeMessage(),
-          fetch(
-            `${import.meta.env.VITE_API_ENDPOINT}/textbooks?limit=20&offset=0`,
-            { headers: { Authorization: `Bearer ${token}` } }
-          )
-        ]);
-
-        setWelcomeMsg(welcomeResult);
-
-        const textbooksData = await textbooksResponse.json();
-        setTextbooks(textbooksData.textbooks || []);
-        setPagination(textbooksData.pagination);
-
-        // Cache the response
-        try {
-          sessionStorage.setItem(cacheKey, JSON.stringify(textbooksData));
-          sessionStorage.setItem(cacheTimeKey, Date.now().toString());
-        } catch (cacheError) {
-          console.warn("Cache write error:", cacheError);
-        }
-      } catch (error) {
-        console.error("Error fetching initial data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchInitialData();
-  }, [token]);
-
-  // Fetch more textbooks (for pagination only)
-  const fetchMoreTextbooks = async (offset: number) => {
+  // Fetch textbooks from API
+  const fetchTextbooks = async (offset = 0, append = false) => {
     if (!token) return;
-    
-    setLoadingMore(true);
+
     try {
+      if (append) {
+        setLoadingMore(true);
+      } else {
+        setLoading(true);
+      }
+
+      // Use the token to fetch textbooks with pagination
       const response = await fetch(
-        `${import.meta.env.VITE_API_ENDPOINT}/textbooks?limit=20&offset=${offset}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        `${import.meta.env.VITE_API_ENDPOINT
+        }/textbooks?limit=20&offset=${offset}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
       const data = await response.json();
-      setTextbooks((prev) => [...prev, ...(data.textbooks || [])]);
-      // Use the requested offset to ensure correct pagination state
-      // (API may return offset: 0 instead of the actual requested offset)
-      setPagination({
-        ...data.pagination,
-        offset: offset,
-      });
+
+      if (append) {
+        setTextbooks((prev) => [...prev, ...(data.textbooks || [])]);
+      } else {
+        setTextbooks(data.textbooks || []);
+      }
+
+      setPagination(data.pagination);
     } catch (error) {
-      console.error("Error fetching more textbooks:", error);
+      console.error("Error fetching textbooks:", error);
     } finally {
+      setLoading(false);
       setLoadingMore(false);
     }
   };
 
+  useEffect(() => {
+    if (token) {
+      fetchTextbooks();
+    }
+  }, [token]);
+
   const handleLoadMore = () => {
     if (pagination && pagination.hasMore) {
-      fetchMoreTextbooks(pagination.offset + pagination.limit);
+      fetchTextbooks(pagination.offset + pagination.limit, true);
     }
   };
 

@@ -289,10 +289,6 @@ export class ApiGatewayStack extends cdk.Stack {
         loggingLevel: apigateway.MethodLoggingLevel.INFO,
         dataTraceEnabled: true,
         metricsEnabled: true,
-        // Enable API Gateway caching (0.5GB is smallest/cheapest option ~$15/month)
-        cacheClusterEnabled: true,
-        cacheClusterSize: "0.5",
-        cacheDataEncrypted: true,
         accessLogDestination: new apigateway.LogGroupLogDestination(
           accessLogGroup
         ),
@@ -331,19 +327,15 @@ export class ApiGatewayStack extends cdk.Stack {
             throttlingBurstLimit: 40,
           },
 
-          // CHEAP: Read operations (just database queries) - WITH CACHING
+          // CHEAP: Read operations (just database queries)
           "/textbooks/GET": {
             throttlingRateLimit: 200, // 200/sec (UP from 100)
             throttlingBurstLimit: 400,
-            cachingEnabled: true,
-            cacheTtl: cdk.Duration.minutes(5),
           },
 
           "/textbooks/*/GET": {
             throttlingRateLimit: 200,
             throttlingBurstLimit: 400,
-            cachingEnabled: true,
-            cacheTtl: cdk.Duration.minutes(5),
           },
 
           // MODERATE: FAQ operations
