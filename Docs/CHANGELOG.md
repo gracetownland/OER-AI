@@ -15,11 +15,7 @@ All notable changes to the OER-AI project after December 16, 2024.
 - Lambda functions are always warm and ready to respond immediately
 - Documented trade-offs between provisioned concurrency and EventBridge warmup in `ARCHITECTURE_DEEP_DIVE.md`
 
-**API Gateway Caching**
 
-- Added 0.5GB API Gateway cache cluster for textbook endpoints
-- `/textbooks` and `/textbooks/{id}` responses cached for 5 minutes
-- Reduces database load and improves response times for homepage
 
 **Frontend Performance**
 
