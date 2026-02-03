@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import {
   Card,
   CardContent,
@@ -192,6 +193,7 @@ export default function TextbookDetailsPage() {
   const [timeRange, setTimeRange] = useState("90d");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [togglingStatus, setTogglingStatus] = useState(false);
 
   // Pagination states
   const [faqsPagination, setFaqsPagination] = useState<PaginationInfo | null>(
@@ -247,6 +249,41 @@ export default function TextbookDetailsPage() {
     } catch (err) {
       console.error("Error fetching textbook details:", err);
       setError("Failed to load textbook details");
+    }
+  };
+
+  const toggleTextbookStatus = async () => {
+    if (!textbook || togglingStatus) return;
+    
+    const newStatus = textbook.status === "Active" ? "Disabled" : "Active";
+    setTogglingStatus(true);
+    
+    try {
+      const session = await AuthService.getAuthSession(true);
+      const token = session.tokens.idToken;
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${id}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ status: newStatus }),
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error("Failed to update textbook status");
+      }
+      
+      setTextbook({ ...textbook, status: newStatus });
+    } catch (err) {
+      console.error("Error updating textbook status:", err);
+      setError("Failed to update textbook status");
+    } finally {
+      setTogglingStatus(false);
     }
   };
 
@@ -564,6 +601,16 @@ export default function TextbookDetailsPage() {
             >
               {textbook.status}
             </Badge>
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100">
+              <span className="text-xs text-gray-500">
+                {textbook.status === "Active" ? "Enabled" : "Disabled"}
+              </span>
+              <Switch
+                checked={textbook.status === "Active"}
+                onCheckedChange={toggleTextbookStatus}
+                disabled={togglingStatus}
+              />
+            </div>
           </div>
 
           <nav className="p-4 space-y-1">

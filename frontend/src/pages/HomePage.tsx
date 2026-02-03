@@ -65,7 +65,7 @@ export default function HomePage() {
     fetchMessage();
   }, []);
 
-  const { token } = useAuthToken();
+  const { token, refreshToken } = useAuthToken();
 
   // Fetch textbooks from API
   const fetchTextbooks = async (offset = 0, append = false) => {
@@ -88,6 +88,13 @@ export default function HomePage() {
           },
         }
       );
+
+      if (response.status === 401) {
+        console.log("Token expired, refreshing...");
+        await refreshToken();
+        return;
+      }
+
       const data = await response.json();
 
       if (append) {
@@ -97,12 +104,13 @@ export default function HomePage() {
       }
 
       setPagination(data.pagination);
-    } catch (error) {
-      console.error("Error fetching textbooks:", error);
-    } finally {
       setLoading(false);
       setLoadingMore(false);
-    }
+    } catch (error) {
+      console.error("Error fetching textbooks:", error);
+      setLoading(false);
+      setLoadingMore(false);
+    } 
   };
 
   useEffect(() => {

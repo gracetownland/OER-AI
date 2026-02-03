@@ -36,4 +36,10 @@ export class AuthService {
   static getAuthSession(useCache?: boolean): Promise<any>;
   static clearAuthCache(): void;
   static isTokenExpiringSoon(token: any): boolean;
+  static forgotPassword(email: string): Promise<AuthResult & { nextStep?: any }>;
+  static confirmForgotPassword(
+    email: string,
+    confirmationCode: string,
+    newPassword: string
+  ): Promise<AuthResult>;
 }

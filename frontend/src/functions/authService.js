@@ -5,6 +5,8 @@ import {
   signOut,
   getCurrentUser,
   fetchAuthSession,
+  resetPassword,
+  confirmResetPassword,
 } from "aws-amplify/auth";
 import { apiCache } from "./apiCache.js";
 
@@ -135,5 +137,27 @@ export class AuthService {
 
     // Consider token expiring if less than 1 minute remaining
     return timeUntilExpiry < 60000;
+  }
+
+  static async forgotPassword(email) {
+    try {
+      const output = await resetPassword({ username: email });
+      return { success: true, nextStep: output.nextStep };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
+
+  static async confirmForgotPassword(email, confirmationCode, newPassword) {
+    try {
+      await confirmResetPassword({
+        username: email,
+        confirmationCode,
+        newPassword,
+      });
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
   }
 }

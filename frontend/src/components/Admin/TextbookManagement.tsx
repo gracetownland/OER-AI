@@ -10,6 +10,8 @@ import {
   HelpCircle,
   Loader2,
   AlertTriangle,
+  ToggleLeft,
+  ToggleRight,
 } from "lucide-react";
 import { AuthService } from "@/functions/authService";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -85,6 +87,11 @@ export default function TextbookManagement() {
     textbookTitle: string;
     isProcessing: boolean;
   }>({ open: false, textbookId: null, textbookTitle: "", isProcessing: false });
+  const [bulkStatusDialog, setBulkStatusDialog] = useState<{
+    open: boolean;
+    enableAll: boolean;
+    isProcessing: boolean;
+  }>({ open: false, enableAll: true, isProcessing: false });
 
   const handleFileSelect = (selectedFile: File) => {
     setUploadStatus({ type: null, message: "" });
@@ -438,6 +445,50 @@ export default function TextbookManagement() {
     }
   };
 
+  const confirmBulkStatusChange = async () => {
+    setBulkStatusDialog((prev) => ({ ...prev, isProcessing: true }));
+    const newStatus = bulkStatusDialog.enableAll ? "Active" : "Disabled";
+    
+    try {
+      const session = await AuthService.getAuthSession(true);
+      const token = session.tokens.idToken;
+      
+      // Update all textbooks using Promise.allSettled for graceful handling
+      const results = await Promise.allSettled(
+        textbooks.map((book) =>
+          fetch(
+            `${import.meta.env.VITE_API_ENDPOINT}/admin/textbooks/${book.id}`,
+            {
+              method: "PUT",
+              headers: {
+                Authorization: token,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ status: newStatus }),
+            }
+          )
+        )
+      );
+      
+      // Count successes and failures
+      const succeeded = results.filter((r) => r.status === "fulfilled" && (r.value as Response).ok).length;
+      const failed = results.length - succeeded;
+      
+      // Update local state for all textbooks
+      setTextbooks(textbooks.map((b) => ({ ...b, status: newStatus })));
+      
+      if (failed > 0) {
+        setError(`Updated ${succeeded} textbooks. ${failed} failed to update.`);
+      }
+      
+      setBulkStatusDialog({ open: false, enableAll: true, isProcessing: false });
+    } catch (err) {
+      console.error("Error updating textbook statuses:", err);
+      setError("Failed to update textbook statuses");
+      setBulkStatusDialog({ open: false, enableAll: true, isProcessing: false });
+    }
+  };
+
   // Fetch textbooks from API
   const fetchTextbooks = async (offset = 0, append = false) => {
     try {
@@ -569,6 +620,28 @@ export default function TextbookManagement() {
           <h3 className="text-xl font-semibold text-gray-900">
             Textbook Management
           </h3>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkStatusDialog({ open: true, enableAll: true, isProcessing: false })}
+              disabled={loading || textbooks.length === 0}
+              className="text-green-700 border-green-200 hover:bg-green-50"
+            >
+              <ToggleRight className="mr-2 h-4 w-4" />
+              Enable All
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkStatusDialog({ open: true, enableAll: false, isProcessing: false })}
+              disabled={loading || textbooks.length === 0}
+              className="text-gray-700 border-gray-200 hover:bg-gray-50"
+            >
+              <ToggleLeft className="mr-2 h-4 w-4" />
+              Disable All
+            </Button>
+          </div>
           <div className="flex gap-2">
             <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
               <DialogTrigger asChild>
@@ -1136,6 +1209,70 @@ export default function TextbookManagement() {
                 <>
                   <Trash2 className="mr-2 h-4 w-4" />
                   Yes, Delete Permanently
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Status Change Confirmation Dialog */}
+      <Dialog
+        open={bulkStatusDialog.open}
+        onOpenChange={(open) =>
+          !bulkStatusDialog.isProcessing &&
+          setBulkStatusDialog({ open, enableAll: true, isProcessing: false })
+        }
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {bulkStatusDialog.enableAll ? (
+                <ToggleRight className="h-5 w-5 text-green-600" />
+              ) : (
+                <ToggleLeft className="h-5 w-5 text-gray-600" />
+              )}
+              {bulkStatusDialog.enableAll ? "Enable All Textbooks" : "Disable All Textbooks"}
+            </DialogTitle>
+            <DialogDescription className="space-y-3 pt-2">
+              <p className="text-gray-700">
+                Are you sure you want to {bulkStatusDialog.enableAll ? "enable" : "disable"} all {textbooks.length} textbooks?
+              </p>
+              <p className="text-sm text-gray-600">
+                {bulkStatusDialog.enableAll
+                  ? "All textbooks will become visible and accessible to users."
+                  : "All textbooks will be hidden from users until re-enabled."}
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() =>
+                setBulkStatusDialog({ open: false, enableAll: true, isProcessing: false })
+              }
+              disabled={bulkStatusDialog.isProcessing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmBulkStatusChange}
+              disabled={bulkStatusDialog.isProcessing}
+              className={bulkStatusDialog.enableAll ? "bg-green-600 hover:bg-green-700" : "bg-gray-600 hover:bg-gray-700"}
+            >
+              {bulkStatusDialog.isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : (
+                <>
+                  {bulkStatusDialog.enableAll ? (
+                    <ToggleRight className="mr-2 h-4 w-4" />
+                  ) : (
+                    <ToggleLeft className="mr-2 h-4 w-4" />
+                  )}
+                  Yes, {bulkStatusDialog.enableAll ? "Enable" : "Disable"} All
                 </>
               )}
             </Button>

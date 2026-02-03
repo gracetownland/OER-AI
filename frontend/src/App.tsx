@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router";
 import AIChatPage from "./pages/ChatInterface/ChatInterface";
 import HomePage from "./pages/HomePage";
 import UserGuidelines from "./pages/UserGuidelines";
@@ -53,6 +53,7 @@ function App() {
               </Route>
 
               {/* Admin Routes */}
+              <Route path="/admin" element={<Navigate to="/admin/login" replace />} />
               <Route path="/admin/login" element={<AdminLogin />} />
               <Route
                 path="/admin/dashboard"
