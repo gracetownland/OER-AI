@@ -596,15 +596,11 @@ def handler(event, context):
         send_progress("retrieving", 15)
         logger.info(f"Building retriever for textbook {textbook_id}...")
         
-        # Get connection pool for database operations
-        pool = get_connection_pool()
-        
         retriever = get_textbook_retriever(
             llm=None,
             textbook_id=textbook_id,
             vectorstore_config_dict=vectorstore_config,
             embeddings=_embeddings,
-            connection_pool=pool,
         )
         logger.info("Retriever built successfully")
         send_progress("retrieving", 20)
