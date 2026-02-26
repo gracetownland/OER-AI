@@ -41,6 +41,7 @@ COPY src/ ${LAMBDA_TASK_ROOT}
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONOPTIMIZE=2
+# Build timestamp to force cache invalidation: 2026-02-26T18:14:30Z
 
 # Validate the installation and clean up any remaining artifacts
 RUN python -c "import sys; print(f'Python version: {sys.version}')" && \
