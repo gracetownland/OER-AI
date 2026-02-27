@@ -1,6 +1,31 @@
 const { LambdaClient, InvokeCommand } = require("@aws-sdk/client-lambda");
+const {
+  ApiGatewayManagementApiClient,
+  PostToConnectionCommand,
+} = require("@aws-sdk/client-apigatewaymanagementapi");
 
 const lambda = new LambdaClient({});
+
+async function sendToClient(event, message) {
+  const { connectionId, domainName, stage } = event.requestContext;
+  const endpoint = `https://${domainName}/${stage}`;
+  const apiGateway = new ApiGatewayManagementApiClient({
+    endpoint,
+  });
+
+  try {
+    await apiGateway.send(
+      new PostToConnectionCommand({
+        ConnectionId: connectionId,
+        Data: JSON.stringify(message),
+      }),
+    );
+    console.log("Sent message to client:", message);
+  } catch (error) {
+    console.error("Failed to send message to client:", error);
+    throw error;
+  }
+}
 
 exports.handler = async (event) => {
   console.log("WebSocket message received:", {
@@ -69,18 +94,24 @@ exports.handler = async (event) => {
         textbook_id.trim() === ""
       ) {
         console.log("Missing or invalid textbook_id field");
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ error: "textbook_id is required" }),
-        };
+        await sendToClient(event, {
+          type: "practice_material_progress",
+          status: "error",
+          progress: 0,
+          error: "textbook_id is required",
+        });
+        return { statusCode: 400 };
       }
 
       if (!topic || typeof topic !== "string" || topic.trim() === "") {
         console.log("Missing or invalid topic field");
-        return {
-          statusCode: 400,
-          body: JSON.stringify({ error: "Topic is required" }),
-        };
+        await sendToClient(event, {
+          type: "practice_material_progress",
+          status: "error",
+          progress: 0,
+          error: "Topic is required",
+        });
+        return { statusCode: 400 };
       }
 
       const practicePayload = {
@@ -122,6 +153,13 @@ exports.handler = async (event) => {
       );
 
       console.log("Practice material function invoked successfully:", result);
+
+      // Send acknowledgment to client that request was received and Lambda invoked
+      await sendToClient(event, {
+        type: "practice_material_progress",
+        status: "initializing",
+        progress: 5,
+      });
 
       return { statusCode: 200 };
     }
@@ -171,15 +209,25 @@ exports.handler = async (event) => {
       return { statusCode: 200, body: JSON.stringify({ status: "warming" }) };
     }
 
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: "Unknown action" }),
-    };
+    console.log("Unknown action received:", action);
+    await sendToClient(event, {
+      type: "error",
+      error: `Unknown action: ${action}`,
+    });
+    return { statusCode: 400 };
   } catch (error) {
     console.error("Error processing WebSocket message:", error);
-    return {
-      statusCode: 500,
-      body: JSON.stringify({ error: "Internal server error" }),
-    };
+    
+    // Try to send error to client
+    try {
+      await sendToClient(event, {
+        type: "error",
+        error: "Internal server error",
+      });
+    } catch (sendError) {
+      console.error("Failed to send error to client:", sendError);
+    }
+    
+    return { statusCode: 500 };
   }
 };
